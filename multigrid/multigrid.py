@@ -24,14 +24,15 @@ class multigrid_2d(object):
         self.ny_inner=self.ny-2
 
     def matrix_D(self):
-
+        L=np.diagflat(-np.ones(self.nx_inner-1), -1)
+        U=np.diagflat(-np.ones(self.nx_inner-1), 1)
         I=np.diagflat(-np.ones(self.nx_inner-1), -1)+np.diagflat(-np.ones(self.nx_inner-1), 1)
         D=I+4*np.diagflat(np.ones(self.nx_inner), 0)
 
-        return D, I
+        return D, I, L, U
 
     def matrix_A(self):
-        D, I =self.matrix_D()
+        D, I, *_ =self.matrix_D()
         A=np.kron(np.eye(self.nx_inner), D)+ np.kron(I, np.eye(self.nx_inner))
 
         return A
@@ -70,6 +71,32 @@ class multigrid_2d(object):
 class multigrid_1d(multigrid_2d):
     def __init__(self, params):
         super().__init__(params)
+
+    def build_rhs(self):
+        pass
+
+    def jacobi_iteration(self, v, f):
+        pass
+
+    def restriction(self, x):
+        pass
+
+    def prolongation(self, x):
+        pass
+
+    def relax(self, A):
+        pass
+
+    def multigrid(self):
+        pass
+
+
+
+    def restriction(self):
+
+
+
+
 
 
 
