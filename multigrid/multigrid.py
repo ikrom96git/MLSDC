@@ -54,9 +54,9 @@ class multigrid_2d(object):
         V=np.linalg.solve(A, F)
         return V
 
-    def plot_solution(self):
+    def plot_solution(self,V):
 
-        V=self.solver()
+        # V=self.solver()
 
         z=V.reshape(self.nx_inner, self.nx_inner)
         Z=np.zeros([self.nx, self.nx])
@@ -71,12 +71,48 @@ class multigrid_2d(object):
 class multigrid_1d(multigrid_2d):
     def __init__(self, params):
         super().__init__(params)
+        # self.u=self.base_method()
+        # pdb.set_trace()
+        self.f=self.func()
+        self.A=self.matrix_A()
+        self.u=0.0*self.f
 
     def build_rhs(self):
         pass
 
-    def jacobi_iteration(self, v, f):
-        pass
+    def DLU(self, A):
+        D=np.diag(A.diagonal(0))
+        L=np.zeros(np.shape(A))
+        U=np.zeros(np.shape(A))
+        for ii in range(np.shape(A)[0]):
+            for jj in range(np.shape(A)[0]):
+                if ii<jj:
+                    L[ii,jj]=A[ii,jj]
+                else:
+                    D[ii,jj]=A[ii, jj]
+        return D, L, U
+
+    def base_method(self):
+        x=np.ones(self.nx_inner)
+        y=np.ones(self.ny_inner)
+        if self.params.base_method=='copy':
+            x=self.params.u0[0]*x
+            y=self.params.u0[1]*y
+        else:
+            raise ValueError('this base method not included')
+        u=np.block([x,y])
+        return u
+
+
+
+    def jacobi_iteration(self, A, v, f, k):
+        D=np.diag(A.diagonal(0))
+        LU=A-D
+        P=np.dot(np.linalg.inv(D), LU)
+        # pdb.set_trace()
+        for ii in range(k):
+            v=P@v+np.linalg.inv(D)@f
+        return v
 
     def restriction(self, x):
         pass
@@ -84,26 +120,10 @@ class multigrid_1d(multigrid_2d):
     def prolongation(self, x):
         pass
 
-    def relax(self, A):
-        pass
-
     def multigrid(self):
-        pass
 
-
-
-    def restriction(self):
-
-
-
-
-
-
-
-
-
-
-
+        vv= self.jacobi_iteration(self.A, self.u, self.f, 10)
+        self.plot_solution(vv)
 
 
 
@@ -113,6 +133,10 @@ if __name__=='__main__':
     params['dx']=0.01
     params['dy']=0.01
     params['Tend']=1.0
+    params['u0']=[0,0]
+    params['base_method']='copy'
     params['f']=lambda x, y: -2*np.pi**2*np.sin(np.pi*x)*np.sin(np.pi*y)
-    aa=multigrid_2d(params)
-    aa.plot_solution()
+    aa=multigrid_1d(params)
+    aa.multigrid()
+
+    # aa.plot_solution()
