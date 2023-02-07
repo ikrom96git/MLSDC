@@ -112,29 +112,60 @@ class multigrid_1d(multigrid_2d):
         # pdb.set_trace()
         for ii in range(k):
             v=P@v+np.linalg.inv(D)@f
+        v=v.reshape([self.nx_inner, self.nx_inner])
         return v
 
+    def residual(self, A, v, f):
+        return f-A@v
+
     def restriction(self, x):
-        pass
+        # x=x.reshape(self.nx_inner, self.nx_inner)
+        dim=np.shape(x)[1]
+        v_2h=np.array([]).reshape(0,int((dim+1)/2)-1)
+        v=np.zeros([1,int((dim+1)*0.5)-1])
+
+        if self.params.rest=='full_weighting':
+            for jj in range(np.shape(x)[0]):
+                for ii in range(0, int((self.nx_inner+1)/2)-1):
+                    v[0,ii]=0.25*(x[jj, 2*ii]+2*x[jj, 2*ii+1]+x[jj, 2*ii+2])
+                pdb.set_trace()
+                v_2h=np.vstack([v_2h, v])
+        else:
+            raise ValueError('something is wrong')
+
+        return v_2h
+
+
+
 
     def prolongation(self, x):
-        pass
+        v=np.zeros([self.nx_inner, self.nx_inner])
+        for jj in range(self.nx_inner):
+            for ii in range(0, int(self.nx_inner/2)-1):
+                if (ii+1)%2:
+                    v[jj,2*ii+1]=0.5*(x[jj,ii]+x[jj, ii+1])
+                else:
+                    v[jj, ii]=x[jj, ii]
+        return v
 
     def multigrid(self):
 
         vv= self.jacobi_iteration(self.A, self.u, self.f, 10)
-        self.plot_solution(vv)
+        x=self.restriction(vv)
+        pdb.set_trace()
+        # self.plot_solution(vv)
 
 
 
 
 if __name__=='__main__':
     params=dict()
-    params['dx']=0.01
-    params['dy']=0.01
+    params['dx']=0.125
+    params['dy']=0.125
     params['Tend']=1.0
     params['u0']=[0,0]
     params['base_method']='copy'
+    params['rest']='full_weighting'
     params['f']=lambda x, y: -2*np.pi**2*np.sin(np.pi*x)*np.sin(np.pi*y)
     aa=multigrid_1d(params)
     aa.multigrid()
