@@ -1,5 +1,7 @@
 import numpy as np
 from core.Collocation import CollBase
 
-import pdb
-pdb.set_trace()
+
+class MLSDC(object):
+    def __init__(self):
+        pass
