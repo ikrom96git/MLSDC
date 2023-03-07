@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pdb
 
 from core.Collocation import CollBase
-
+from core.Lagrange import LagrangeApproximation
 class _Pars(object):
     def __init__(self, pars):
 
@@ -73,6 +73,26 @@ class SDC_sweep(object):
 
         return U
 
+class Transfer(object):
+    def __init__(self,fine_params=None, coarse_params=None, space_params=None):
+        self.fine_params=fine_params
+        self.coarse_params=coarse_params
+        self.space_params=_Pars(space_params)
+        self.Rcoll=self.get_transfer_matrix()
+
+
+    def get_transfer_matrix(self, fine_nodes, coarse_nodes):
+
+        approx=LagrangeApproximation(coarse_nodes)
+        return approx.getInterpolationMatrix(fine_nodes)
+
+
+
+
+
+
+
+
 if __name__=='__main__':
     problem_params=dict()
     problem_params['lambda_f']=10j
@@ -86,7 +106,15 @@ if __name__=='__main__':
     collocation_params['num_nodes']=10
     collocation_params['K_iter']=100
 
+     space_transfer_params=dict()
+     space_transfer_params['rorder']=2
+     space_transfer_params['iorder']=2
+
+
+    nn=np.linspace(0, 0.1, 100)
     sdc=SDC_sweep(problem_params, collocation_params)
     aa=sdc.sweep()
     plt.plot(aa.real, aa.imag)
+    plt.plot(np.exp(11j*nn).real, np.exp(11j*nn).imag)
+
     pdb.set_trace()
