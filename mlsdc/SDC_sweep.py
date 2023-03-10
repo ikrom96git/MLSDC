@@ -14,7 +14,7 @@ class get_level_params(object):
     def __init__(self, num_nodes, quad_type):
         self.num_nodes=num_nodes
         self.quad_type=quad_type
-        [self.Q, self.QI,self.QE, self.S]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
+        [self.Q, self.Qf,self.Qs, self.S]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
 
     def Qmatrix(self, num_nodes=None, quad_type=None):
         self.coll=CollBase(num_nodes=num_nodes, quad_type=quad_type)
@@ -116,8 +116,57 @@ class MLSDC(object):
             level=self.fine
 
 
-        tau1=self.prob.dt*(self.prob.dt*self.transfer.Rcoll@level.Q@(FI_fine+FE_fine)-self.coarse.Q@(FI_coarse+FE_coarse))
-        return tau1+self.prob.dt*self.transfer.Rcoll@tau
+        tau1=self.prob.dt*(self.transfer.Rcoll@level.Q@(FI_fine+FE_fine)-self.coarse.Q@(FI_coarse+FE_coarse))
+        return tau1+self.transfer.Rcoll@tau
+
+    def residual(self, U, U_0, level=None):
+        if level==None:
+            level=self.fine
+        return U_0+self.prob.dt*level.Q@self.func(U)-U
+
+    def sweep(self, U0,U, level=None):
+        if level==None:
+            level=self.fine
+
+
+        Qdelta=self.prob.dt*(self.prob.lambda_f*level.Qf+self.prob.lambda_s*level.Qs)
+        L=np.eye(level.coll.num_nodes)-Qdelta
+        R=self.prob.dt*(self.prob.lambda_s+self.prob.lambda_f)*level.Q-Qdelta
+
+        U=np.linalg.solve(L,U0+R@U)
+
+
+        return U
+
+    def mlsdc_fwsw(self):
+        U=self.base_method(self.prob.u0)
+        U0=np.ones(self.fine.num_nodes, dtype="complex")*self.prob.u0
+        U=U[1:]
+        for ii in range(1):
+
+            Usol=self.sweep(U0, U)
+            U=Usol
+            print("fine")
+
+        rf=self.residual(Usol, U0)
+
+        rc=self.restrict(rf)
+
+        e=np.zeros(self.coarse.num_nodes, dtype='complex')
+
+        for ii in range(1):
+            esol=self.sweep(rc, e, level=self.coarse)
+            rc=esol
+            print("coarse")
+
+        error=self.prolongation(esol)
+        ufinest=Usol+error
+        rfinest=self.residual(ufinest, U0)
+        pdb.set_trace()
+
+
+
+
 
     def iteration(self):
 
@@ -144,20 +193,30 @@ class MLSDC(object):
 
         tau=self.FAS(self.func_F(u[1:]), self.func_E(u[1:]), self.func_F(U_coarse[1:]), self.func_E(U_coarse[1:]))
 
-
-        for ii in range(10):
-            u_coarse=self.fwsw_sweep(U_coarse, tau=tau, level=self.coarse) #self.SDC_sweep(U_coarse, FI_coarse, FE_coarse, tau, level=self.coarse)
-            U_coarse=u_coarse
+        r=self.residual(u[1:], u0[1:], level=self.fine)
+        r_coarse=np.append(0,self.restrict(r))
+        for ii in range(100):
+            e=self.fwsw_sweep(r_coarse, level=self.coarse)
+            r_coarse=e
+        e_fine=self.prolongation(e[1:])
+        usol=u[1:]+e_fine
+        u_sol=np.append(self.prob.u0, usol)
+        rr=self.residual(usol, u0[1:])
+        plt.plot(u_sol.real, u_sol.imag)
+        pdb.set_trace()
+        # for ii in range(10):
+        #     u_coarse=self.fwsw_sweep(U_coarse, tau=tau, level=self.coarse) #self.SDC_sweep(U_coarse, FI_coarse, FE_coarse, tau, level=self.coarse)
+        #     U_coarse=u_coarse
             # FI_coarse=FI_c
             # FE_coarse=FE_c
 
-        # Cycle from coarse to fine
-        inter=self.prolongation((u_coarse-U_tilde)[1:])
-        u_f=u[1:]+inter
-        usol=np.append(self.prob.u0, u_f)
-        # FI_f=self.func_F(u_f)
-        # FE_f=self.func_E(u_f)
-        pdb.set_trace()
+        # # Cycle from coarse to fine
+        # inter=self.prolongation((u_coarse-U_tilde)[1:])
+        # u_f=u[1:]+inter
+        # usol=np.append(self.prob.u0, u_f)
+        # # FI_f=self.func_F(u_f)
+        # # FE_f=self.func_E(u_f)
+        # pdb.set_trace()
         # for ii in range(self.coll_params.Kiter):
         #     u_cf, FI_cf, FE_cf=self.SDC_sweep(u_f, FI_f, FE_f)
         #     u_f=u_cf
@@ -297,20 +356,21 @@ if __name__=='__main__':
     problem_params['lambda_f']=0+10j
     problem_params['lambda_s']=0+1j
     problem_params['u0']=1.0
-    problem_params['dt']=0.1
+    problem_params['dt']=0.9
     problem_params['Tend']=2.0
 
     collocation_params=dict()
-    collocation_params['quad_type']='GAUSS'
-    collocation_params['num_nodes']=[5,3]
-    collocation_params['Kiter']=10
+    collocation_params['quad_type']='LOBATTO'
+    collocation_params['num_nodes']=[5,4]
+    collocation_params['Kiter']=2
 
 
 
 
     nn=np.linspace(0, 0.1, 100)
     sdc=MLSDC(problem_params, collocation_params)
-    u, fi, fe=sdc.iteration()
+    sdc.mlsdc_fwsw()
+    # u, fi, fe=
     # plt.plot(aa.real, aa.imag)
     # plt.plot(np.exp(11j*nn).real, np.exp(11j*nn).imag)
 
