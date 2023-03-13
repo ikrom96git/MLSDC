@@ -28,8 +28,9 @@ class get_level_params(object):
             QI[m, 1 : m + 1] = self.coll.delta_m[0:m]
 
         QI=QI[1:,1:]
-        QE=np.copy(QI)
-        np.fill_diagonal(QE, 0)
+        QE=np.copy(QI[:,1:])
+        QE=np.hstack((QE, np.zeros(num_nodes).reshape([num_nodes,1])))
+        # np.fill_diagonal(QE, 0)
 
         return [Q, QI, QE,  S]
 
@@ -57,11 +58,11 @@ class MLSDC(object):
     def base_method(self, u0 ,type=None):
         uE_old=u0*np.ones(self.fine.num_nodes+1, dtype="complex")
         uI_old=u0*np.ones(self.fine.num_nodes+1, dtype="complex")
-        if type==None:
+        # if type==None:
 
-            for ii in range(self.fine.num_nodes):
-                uE_old[ii+1]=uE_old[ii]+self.prob.dt*self.fine.coll.delta_m[ii]*self.func_E(uE_old[ii])
-                uI_old[ii+1]=uI_old[ii]/(1-self.prob.dt*self.fine.coll.delta_m[ii]*(self.prob.lambda_f+self.prob.lambda_s))#uI_old[ii]+self.fine.coll.delta_m[ii]*self.func_F(uI_old[ii])
+        #     for ii in range(self.fine.num_nodes):
+        #         uE_old[ii+1]=uE_old[ii]+self.prob.dt*self.fine.coll.delta_m[ii]*self.func_E(uE_old[ii])
+        #         uI_old[ii+1]=uI_old[ii]/(1-self.prob.dt*self.fine.coll.delta_m[ii]*(self.prob.lambda_f+self.prob.lambda_s))#uI_old[ii]+self.fine.coll.delta_m[ii]*self.func_F(uI_old[ii])
 
         return uI_old#, uE_old
 
@@ -95,7 +96,7 @@ class MLSDC(object):
             level=self.fine
 
         U_old=np.copy(U)
-        S=self.prob.dt*level.S@self.func(U_old[1:])
+        S=self.prob.dt*level.S@self.func(U_old[1:]) + tau
 
         for ii in range(level.num_nodes):
             U[ii+1]=U[ii]+self.prob.dt*level.coll.delta_m[ii]*(self.func_F(U[ii+1])-self.func_F(U_old[ii+1])+self.func_E(U[ii])-self.func_E(U_old[ii]))+S[ii]+tau[ii]
@@ -104,10 +105,10 @@ class MLSDC(object):
 
 
     def restrict(self, U):
-        return self.prob.dt*self.transfer.Rcoll@U
+        return self.transfer.Rcoll@U
 
     def prolongation(self, U):
-        return self.prob.dt*self.transfer.Pcoll@U
+        return self.transfer.Pcoll@U
 
     def FAS(self, FI_fine, FE_fine, FI_coarse, FE_coarse, tau=None, level=None):
         if tau==None:
@@ -115,7 +116,7 @@ class MLSDC(object):
         if level==None:
             level=self.fine
 
-
+        pdb.set_trace()
         tau1=self.prob.dt*(self.transfer.Rcoll@level.Q@(FI_fine+FE_fine)-self.coarse.Q@(FI_coarse+FE_coarse))
         return tau1+self.transfer.Rcoll@tau
 
@@ -124,16 +125,18 @@ class MLSDC(object):
             level=self.fine
         return U_0+self.prob.dt*level.Q@self.func(U)-U
 
-    def sweep(self, U0,U, level=None):
+    def sweep(self, U0,U, level=None, tau=[None]):
+        if None in tau:
+            tau=np.zeros(len(U0), dtype="complex")
         if level==None:
             level=self.fine
-
+        # pdb.set_trace()
 
         Qdelta=self.prob.dt*(self.prob.lambda_f*level.Qf+self.prob.lambda_s*level.Qs)
         L=np.eye(level.coll.num_nodes)-Qdelta
         R=self.prob.dt*(self.prob.lambda_s+self.prob.lambda_f)*level.Q-Qdelta
-
-        U=np.linalg.solve(L,U0+R@U)
+        pdb.set_trace()
+        U=np.linalg.solve(L,U0+R@U+tau)
 
 
         return U
@@ -141,6 +144,7 @@ class MLSDC(object):
     def mlsdc_fwsw(self):
         U=self.base_method(self.prob.u0)
         U0=np.ones(self.fine.num_nodes, dtype="complex")*self.prob.u0
+        U0c=np.ones(self.coarse.num_nodes, dtype="complex")*self.prob.u0
         U=U[1:]
         for ii in range(1):
 
@@ -149,19 +153,22 @@ class MLSDC(object):
             print("fine")
 
         rf=self.residual(Usol, U0)
+        u=U
+        U_coarse=self.restrict(u)
 
         rc=self.restrict(rf)
-
+        # pdb.set_trace()
+        tau=self.FAS(self.func_F(u), self.func_E(u), self.func_F(U_coarse), self.func_E(U_coarse))
         e=np.zeros(self.coarse.num_nodes, dtype='complex')
-
+        # pdb.set_trace()
         for ii in range(1):
-            esol=self.sweep(rc, e, level=self.coarse)
-            rc=esol
-            print("coarse")
+            uiter=self.sweep(U0c, U_coarse, level=self.coarse, tau=tau)
+            # rc=esol
+            # print("coarse")
 
-        error=self.prolongation(esol)
-        ufinest=Usol+error
-        rfinest=self.residual(ufinest, U0)
+        # error=self.prolongation(esol)
+        ufinest=U+self.prolongation(-U_coarse+uiter)
+        # rfinest=self.residual(ufinest, U0)
         pdb.set_trace()
 
 
@@ -356,13 +363,13 @@ if __name__=='__main__':
     problem_params['lambda_f']=0+10j
     problem_params['lambda_s']=0+1j
     problem_params['u0']=1.0
-    problem_params['dt']=0.9
+    problem_params['dt']=0.1
     problem_params['Tend']=2.0
 
     collocation_params=dict()
     collocation_params['quad_type']='LOBATTO'
-    collocation_params['num_nodes']=[5,4]
-    collocation_params['Kiter']=2
+    collocation_params['num_nodes']=[5,3]
+    collocation_params['Kiter']=1
 
 
 
