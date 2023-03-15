@@ -116,7 +116,6 @@ class MLSDC(object):
         if level==None:
             level=self.fine
 
-        pdb.set_trace()
         tau1=self.prob.dt*(self.transfer.Rcoll@level.Q@(FI_fine+FE_fine)-self.coarse.Q@(FI_coarse+FE_coarse))
         return tau1+self.transfer.Rcoll@tau
 
@@ -135,7 +134,7 @@ class MLSDC(object):
         Qdelta=self.prob.dt*(self.prob.lambda_f*level.Qf+self.prob.lambda_s*level.Qs)
         L=np.eye(level.coll.num_nodes)-Qdelta
         R=self.prob.dt*(self.prob.lambda_s+self.prob.lambda_f)*level.Q-Qdelta
-        pdb.set_trace()
+        # pdb.set_trace()
         U=np.linalg.solve(L,U0+R@U+tau)
 
 
@@ -154,11 +153,15 @@ class MLSDC(object):
 
         rf=self.residual(Usol, U0)
         u=U
+        # self.coefficient(self.fine.coll.nodes, u)
         U_coarse=self.restrict(u)
-
+        U_tilde=U_coarse.copy()
+        # self.coefficient(self.fine.coll.nodes, Usol)
+        u_coar=self.best_function(self.coarse.coll.nodes, order_poly=3, filename='order.csv')
         rc=self.restrict(rf)
         # pdb.set_trace()
         tau=self.FAS(self.func_F(u), self.func_E(u), self.func_F(U_coarse), self.func_E(U_coarse))
+        tau_minimax=self.FAS(self.func_F(u), self.func_E(u), self.func_F(u_coar), self.func_E(u_coar))
         e=np.zeros(self.coarse.num_nodes, dtype='complex')
         # pdb.set_trace()
         for ii in range(1):
@@ -166,10 +169,75 @@ class MLSDC(object):
             # rc=esol
             # print("coarse")
 
+        for ii in range(1):
+            u_minimax=self.sweep(U0c, u_coar, level=self.coarse, tau=tau_minimax)
+
         # error=self.prolongation(esol)
         ufinest=U+self.prolongation(-U_coarse+uiter)
+        ufine_minimax=U+self.prolongation(u_minimax-u_coar)
+        relaxu_fine=self.sweep(U0, ufinest, level=self.fine)
+        relaxu_minimax=self.sweep(U0, ufine_minimax, level=self.fine)
+
+
         # rfinest=self.residual(ufinest, U0)
         pdb.set_trace()
+
+    def best_function(self, nodes, order_poly=3, filename=None):
+
+        coeff=np.genfromtxt(filename, delimiter=',')
+        Real=coeff[0:order_poly+1]
+        Imag=coeff[order_poly+1:]
+        values=Real+Imag*1j
+
+        u_coar=np.zeros(len(nodes), dtype='complex')
+        for jj, nn in enumerate(nodes):
+
+            poly=values[-1]
+            for ii in range(order_poly,0,-1):
+                print(ii)
+                print(poly)
+                poly= poly+values[order_poly-ii]*nn**ii
+            # pdb.set_trace()
+            u_coar[jj]=poly
+
+        return u_coar
+
+
+
+    def coefficient(self, x, f):
+        X=np.ones(np.size(x))
+        for ii in range(1, len(x)):
+            X=np.vstack((x**ii, X ))
+        d=np.real(np.linalg.det(X))
+        D=np.vstack((f, X))
+        c=np.zeros(len(x), dtype='complex')
+        file = open("coefficient.txt", "w")
+
+        for ii in range(1, len(x)+1):
+            # if ii==1:
+            # else:
+            #     file = open("coefficient.txt", "a")
+            print(len(x)-ii+1)
+            mat=np.delete(D,len(x)-ii+1 ,0)
+
+            c[ii-1]=(-1)**(len(x)-ii)*(np.linalg.det(mat)/d)
+            # pdb.set_trace()
+            # if ii==1:
+            #     file.write(str(c[ii-1]))
+            # else:
+            #     file.write(", " + str(c[ii-1]))
+
+        file.write(str(np.real(c))+ "\n"+ str(np.imag(c)))
+        file.close()
+        c_real=np.flip(np.real(c))
+        c_imag=np.flip(np.imag(c))
+        C=np.append(c_real, c_imag)
+        np.savetxt('coefficient.csv', C)
+
+        pdb.set_trace()
+
+
+
 
 
 
@@ -194,7 +262,7 @@ class MLSDC(object):
         # FI_coarse=self.func_F(U_coarse)
         # FE_coarse=self.func_E(U_coarse)
 
-        U_tilde=U_coarse.copy()
+
 
         # Compute FAS correction and sweep
 
@@ -242,114 +310,6 @@ class Transfer(object):
 
         approx=LagrangeApproximation(coarse_nodes)
         return approx.getInterpolationMatrix(fine_nodes)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class SDC_sweep(object):
-
-#     def __init__(self, problem_params, collocation_params):
-#         self.prob=_Pars(problem_params)
-#         self.collocation=_Pars(collocation_params)
-#         [self.Q, self.Qf, self.Qs,  self.S]=self.collocation_matrix()
-
-
-#     def collocation_matrix(self):
-#         self.coll=CollBase(num_nodes=self.collocation.num_nodes,quad_type=self.collocation.quad_type)
-#         Q=self.coll.Qmat[1:,1:]
-#         S=self.coll.Smat[1:,1:]
-#         QE = np.zeros(self.coll.Qmat.shape)
-#         for m in range(self.coll.num_nodes + 1):
-#             QE[m, 0:m] = self.coll.delta_m[0:m]
-#         QI = np.zeros(self.coll.Qmat.shape)
-#         for m in range(self.coll.num_nodes + 1):
-#             QI[m, 1 : m + 1] = self.coll.delta_m[0:m]
-
-#         QI=QI[1:,1:]
-#         QE=np.copy(QI)
-#         np.fill_diagonal(QE, 0)
-
-#         return [Q, QI, QE,  S]
-
-
-
-
-
-
-
-
-
-#     def func(self, U):
-#         return (self.prob.lambda_s+self.prob.lambda_f)*U
-
-#     def sweep(self, tau=None):
-#         if tau==None:
-#             tau=0.0
-#         U0=self.base_method()
-#         U=self.base_method(type="EEuler")
-#         Qdelta=self.prob.dt*(self.prob.lambda_f*self.Qf+self.prob.lambda_s*self.Qs)
-#         L=np.eye(self.coll.num_nodes)-Qdelta
-#         R=self.prob.dt*(self.prob.lambda_s+self.prob.lambda_f)*self.Q-Qdelta
-
-#         for ii in range(self.collocation.K_iter):
-#             U=np.linalg.solve(L,U0+R@U)
-
-
-#         return U
-
-
-# class FAS(object):
-#     def __init__(self, problem_params, collocation_params):
-#         self.prob=_Pars(problem_params)
-#         self.coll=_Pars(collocation_params)
-#         self.problem_params=problem_params
-#         self.collocation_params=collocation_params
-
-#     def fine_params(self):
-#         fine_prob=dict()
-#         fine_prob=self.problem_params.copy()
-#         fine_coll=self.collocation_params.copy()
-#         fine_coll['num_nodes']=self.collocation_params[0]
-
-#     def tau_correction(F_fine, F_coarse, tau=None):
-#         if tau==None:
-#             tau=0.0
-
-
-
-
-#     def fine_level(self):
-#         pass
 
 
 
