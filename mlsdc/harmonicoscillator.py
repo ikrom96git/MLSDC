@@ -63,7 +63,7 @@ class MLSDC(object):
 
     def FAS_tau(self, u_fine, u_coarse):
 
-        tau=self.prob.dt*(self.Rcoll @ self.fine.coll.Qcoll @ self.fine.FF @ u_fine - self.coarse.coll.Qcoll @ self.coarse.FF @ u_coarse)
+        tau=(self.Rcoll @ self.fine.coll.Qcoll @ self.fine.FF @ u_fine - self.coarse.coll.Qcoll @ self.coarse.FF @ u_coarse)
         return tau
 
     def restriction(self, U):
@@ -319,9 +319,9 @@ def Plot_residual(x_axis, y_axis, titles=None):
 if __name__=='__main__':
     problem_params=dict()
     problem_params['kappa']=1
-    problem_params['mu']=0
-    problem_params['u0']=[1.0, 0]
-    problem_params['dt']=0.1
+    problem_params['mu']=2
+    problem_params['u0']=[1.0, 3]
+    problem_params['dt']=0.5
     problem_params['Tend']=2.0
 
     collocation_params=dict()
