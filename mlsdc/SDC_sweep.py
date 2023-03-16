@@ -302,7 +302,7 @@ class MLSDC(object):
 
 class Transfer(object):
     def __init__(self,fine_num_nodes, coarse_num_nodes):
-
+        pdb.set_trace()
         self.Pcoll=self.get_transfer_matrix(fine_num_nodes, coarse_num_nodes)
         self.Rcoll=self.get_transfer_matrix(coarse_num_nodes, fine_num_nodes)
 
