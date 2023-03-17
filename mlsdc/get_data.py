@@ -9,6 +9,7 @@ import glob
 import numpy as np
 from harmonicoscillator import MLSDC, Plot_residual
 from params import problem_params, collocation_params
+import pdb
 import matplotlib.pyplot as plt
 def new_coarse():
     name=glob.glob('./data/*.npy')
@@ -19,6 +20,7 @@ def new_coarse():
         if 'res' in name[ii]:
 
             res=np.load(name[ii])
+            # pdb.set_trace()
             res_pos, res_vel=np.split(res, 2)
             Res_pos=np.append(np.max(res_pos), Res_pos)
             Res_vel=np.append(np.max(res_vel), Res_vel)
@@ -46,4 +48,5 @@ if __name__=='__main__':
     R_MLSDC, R_SDC=SDC()
     title=['MLSDC(CH)', 'MLSDC', 'SDC']
     residual=np.block([ [res_pos], [R_MLSDC[:,0]], [R_SDC[:,0]]])
+    # pdb.set_trace()
     Plot_residual(np.arange(1, 5), residual, titles=title)

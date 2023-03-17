@@ -94,7 +94,7 @@ class MLSDC(object):
         # Relax: fine sweep
 
         U_finest=self.fine.sweep(U_fine, U0_fine)
-
+        # pdb.set_trace()
         # MLSDC residual
         Residual=self.fine.residual(U_finest, U0_fine)
 
@@ -123,9 +123,10 @@ class MLSDC(object):
         for ii in range(Kiter):
             U_finest, Residual=self.MLSDC_sweep(U_fine=U)
             U=U_finest
+            # pdb.set_trace()
 
-            Residual_MLSDC[ii, 0]=np.linalg.norm(Residual[:self.fine.coll.num_nodes])
-            Residual_MLSDC[ii, 1]=np.linalg.norm(Residual[self.fine.coll.num_nodes:])
+            Residual_MLSDC[ii, 0]=np.linalg.norm(Residual[:self.fine.coll.num_nodes], np.inf)
+            Residual_MLSDC[ii, 1]=np.linalg.norm(Residual[self.fine.coll.num_nodes:], np.inf)
 
         return U, Residual_MLSDC
 
@@ -138,8 +139,8 @@ class MLSDC(object):
             U_SDC, Residual=self.SDC_sweep(U=U)
             U=U_SDC
 
-            Residual_SDC[ii, 0]=np.linalg.norm(Residual[:self.fine.coll.num_nodes])
-            Residual_SDC[ii, 1]=np.linalg.norm(Residual[self.fine.coll.num_nodes:])
+            Residual_SDC[ii, 0]=np.linalg.norm(Residual[:self.fine.coll.num_nodes], np.inf)
+            Residual_SDC[ii, 1]=np.linalg.norm(Residual[self.fine.coll.num_nodes:], np.inf)
 
 
 
@@ -213,14 +214,14 @@ class minimax(MLSDC):
         U_fine=np.genfromtxt('U_finest.csv')
         U_coarse=self.coar_coeff()
         tau_coarse=self.FAS_tau(U_fine, U_coarse)
-
+        print(U_coarse)
         # Coarse sweep
 
         Uc=self.coarse.sweep(U_coarse, self.U0_coarse, tau=tau_coarse)
 
         # Coarse to fine
 
-        U_fine=U_fine+self.prolongation(-Uc+U_coarse)
+        U_fine=U_fine+self.prolongation(Uc-U_coarse)
 
         # Relax: fine sweep
 
@@ -228,19 +229,24 @@ class minimax(MLSDC):
 
 
         np.savetxt('U_finest.csv', U_finest)
+        # pdb.set_trace()
 
         # MLSDC residual
         Residual=self.fine.residual(U_finest, self.U0_fine)
+        # save data
+        now=str(datetime.now())
+
+        np.save('data/{}_sol.npy'.format(now[14:19]), U_finest)
+        np.save('data/{}_res.npy'.format(now[14:19]), Residual)
+        print(U_finest)
+        print(Residual)
 
         return U_finest, Residual
 
     def save_data(self):
-        U, Residual=self.coarse_to_fine()
+        pass
 
-        now=str(datetime.now())
 
-        np.save('data/{}_sol.npy'.format(now[14:19]), U)
-        np.save('data/{}_res.npy'.format(now[14:19]), Residual)
 
 
 
@@ -316,30 +322,30 @@ def Plot_residual(x_axis, y_axis, titles=None):
 
 
 
-if __name__=='__main__':
-    problem_params=dict()
-    problem_params['kappa']=1
-    problem_params['mu']=2
-    problem_params['u0']=[1.0, 3]
-    problem_params['dt']=0.5
-    problem_params['Tend']=2.0
+# if __name__=='__main__':
+#     problem_params=dict()
+#     problem_params['kappa']=1
+#     problem_params['mu']=2
+#     problem_params['u0']=[1.0, 3]
+#     problem_params['dt']=0.5
+#     problem_params['Tend']=2.0
 
-    collocation_params=dict()
-    collocation_params['quad_type']='LOBATTO'
-    collocation_params['num_nodes']=[5,3]
-    iteration=MLSDC(problem_params, collocation_params)
-    U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
-    U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
-
-
-
-
-    title=['MLSDC', 'SDC']
+#     collocation_params=dict()
+#     collocation_params['quad_type']='LOBATTO'
+#     collocation_params['num_nodes']=[5,3]
+#     iteration=MLSDC(problem_params, collocation_params)
+#     U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
+#     U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
 
 
 
 
+#     title=['MLSDC', 'SDC']
 
-    nn=np.linspace(0, 0.1, 100)
 
-    pdb.set_trace()
+
+
+
+#     nn=np.linspace(0, 0.1, 100)
+
+#     pdb.set_trace()
