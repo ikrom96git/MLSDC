@@ -9,7 +9,7 @@ import glob
 import numpy as np
 from harmonicoscillator import MLSDC, Plot_residual
 from params import problem_params, collocation_params
-import pdb
+import matplotlib.pyplot as plt
 def new_coarse():
     name=glob.glob('./data/*.npy')
     Res_pos = []
@@ -28,6 +28,16 @@ def SDC():
     iteration=MLSDC(problem_params, collocation_params)
     U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
     U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
+    time=iteration.fine.coll.coll.nodes
+    mlsdc_pos, mlsdc_vev=np.split(U_MLSDC, 2)
+    sdc_pos, sdc_vel=np.split(U_SDC, 2)
+    # plt.plot(time, mlsdc_pos, label='MLSDC')
+    # plt.plot(time, sdc_pos, label='SDC')
+    # plt.xlabel('nodes points')
+    # plt.ylabel('Solution')
+    # plt.title('Position on the single time step')
+    # plt.legend()
+    # plt.show()
     return R_MLSDC, R_SDC
 
 if __name__=='__main__':
@@ -35,5 +45,5 @@ if __name__=='__main__':
     res_pos=np.flip(res_pos)
     R_MLSDC, R_SDC=SDC()
     title=['MLSDC(CH)', 'MLSDC', 'SDC']
-    residual=np.block([[res_pos], [R_MLSDC[:,0]], [R_SDC[:,0]]])
-    Plot_residual([1,2,3,4], residual, titles=title)
+    residual=np.block([ [res_pos], [R_MLSDC[:,0]], [R_SDC[:,0]]])
+    Plot_residual(np.arange(1, 5), residual, titles=title)
