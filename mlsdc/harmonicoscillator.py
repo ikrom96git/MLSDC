@@ -62,7 +62,7 @@ class MLSDC(object):
 
 
     def FAS_tau(self, u_fine, u_coarse):
-
+        # pdb.set_trace()
         tau=(self.Rcoll @ self.fine.coll.Qcoll @ self.fine.FF @ u_fine - self.coarse.coll.Qcoll @ self.coarse.FF @ u_coarse)
         return tau
 
@@ -81,6 +81,7 @@ class MLSDC(object):
 
         # Fine to coarse without sweep
         U_coarse=self.restriction(U_fine)
+
         tau_coarse=self.FAS_tau(U_fine, U_coarse)
 
         # Coarse sweep
@@ -94,9 +95,10 @@ class MLSDC(object):
         # Relax: fine sweep
 
         U_finest=self.fine.sweep(U_fine, U0_fine)
-        # pdb.set_trace()
+
         # MLSDC residual
         Residual=self.fine.residual(U_finest, U0_fine)
+        # pdb.set_trace()
 
         return U_finest, Residual
 
@@ -123,10 +125,11 @@ class MLSDC(object):
         for ii in range(Kiter):
             U_finest, Residual=self.MLSDC_sweep(U_fine=U)
             U=U_finest
-            # pdb.set_trace()
+
 
             Residual_MLSDC[ii, 0]=np.linalg.norm(Residual[:self.fine.coll.num_nodes], np.inf)
             Residual_MLSDC[ii, 1]=np.linalg.norm(Residual[self.fine.coll.num_nodes:], np.inf)
+            # pdb.set_trace()
 
         return U, Residual_MLSDC
 
@@ -162,6 +165,7 @@ class minimax(MLSDC):
 
         nodes=self.fine.coll.coll.nodes
         U=np.genfromtxt('U_finest.csv')
+        print('U_finest:', U)
         u_pos, u_vel=np.split(U, 2)
         A=np.ones(np.size(nodes))
         for ii in range(1, len(nodes)):
@@ -183,10 +187,16 @@ class minimax(MLSDC):
 
             c_vel[ii-1]=(-1)**(len(nodes)-ii)*(np.linalg.det(mat_vel)/d)
 
-        c_fpos=np.flip(np.real(c_pos))
-        c_fvel=np.flip(np.imag(c_vel))
+        c_fpos=np.flip(c_pos)
+        c_fvel=np.flip(c_vel)
         C=np.append(c_fpos, c_fvel)
+
         np.savetxt('coefficient_fine.csv', C)
+
+    def FAS_tau_minimax(self, u_fine, u_coarse):
+
+        tau=(u_fine- self.coarse.coll.Qcoll @ self.coarse.FF @ u_coarse)
+        return tau
 
     def coar_coeff(self, order_poly=3):
         nodes=self.coarse.coll.coll.nodes
@@ -196,7 +206,67 @@ class minimax(MLSDC):
 
         u_pos=np.zeros(len(nodes))
         u_vel=np.zeros(len(nodes))
+        # pdb.set_trace()
+        for jj, nn in enumerate(nodes):
 
+            poly_pos=coeff_pos[-1]
+            poly_vel=coeff_vel[-1]
+
+            for ii in range(order_poly, 0, -1):
+                poly_pos=poly_pos+coeff_pos[order_poly-ii]*nn**ii
+                poly_vel=poly_vel+coeff_vel[order_poly-ii]*nn**ii
+
+            u_pos[jj]=poly_pos
+            u_vel[jj]=poly_vel
+        return np.block([u_pos, u_vel])
+
+    def fineQ_coeff(self, dummy_data=True):
+
+        if dummy_data:
+
+            QU=self.fine.coll.Qcoll @ self.fine.FF @ self.U0_fine
+
+            np.savetxt('QU_finest.csv', QU)
+
+        nodes=self.fine.coll.coll.nodes
+        U=np.genfromtxt('QU_finest.csv')
+        print(U)
+        u_pos, u_vel=np.split(U, 2)
+        A=np.ones(np.size(nodes))
+        for ii in range(1, len(nodes)):
+            A=np.vstack((nodes**ii, A ))
+        d=np.real(np.linalg.det(A))
+        D_pos=np.vstack((u_pos, A))
+        D_vel=np.vstack((u_vel, A))
+
+        c_pos=np.zeros(len(nodes))
+        c_vel=np.zeros(len(nodes))
+
+
+        for ii in range(1, len(nodes)+1):
+
+            mat_pos=np.delete(D_pos,len(nodes)-ii+1 ,0)
+            mat_vel=np.delete(D_vel,len(nodes)-ii+1 ,0)
+
+            c_pos[ii-1]=(-1)**(len(nodes)-ii)*(np.linalg.det(mat_pos)/d)
+
+            c_vel[ii-1]=(-1)**(len(nodes)-ii)*(np.linalg.det(mat_vel)/d)
+
+        c_fpos=np.flip(c_pos)
+        c_fvel=np.flip(c_vel)
+        C=np.append(c_fpos, c_fvel)
+        # pdb.set_trace()
+        np.savetxt('coefficient_fineQU.csv', C)
+
+    def coarQU_coeff(self, order_poly=3):
+        nodes=self.coarse.coll.coll.nodes
+
+        coeff_coar=np.genfromtxt('coefficient_coarQU.csv', delimiter=',')
+        coeff_pos, coeff_vel=np.split(coeff_coar, 2)
+
+        u_pos=np.zeros(len(nodes))
+        u_vel=np.zeros(len(nodes))
+        # pdb.set_trace()
         for jj, nn in enumerate(nodes):
 
             poly_pos=coeff_pos[-1]
@@ -213,8 +283,11 @@ class minimax(MLSDC):
     def coarse_to_fine(self):
         U_fine=np.genfromtxt('U_finest.csv')
         U_coarse=self.coar_coeff()
-        tau_coarse=self.FAS_tau(U_fine, U_coarse)
-        print(U_coarse)
+        QU=self.coarQU_coeff()
+
+        tau_coarse=self.FAS_tau_minimax(QU, U_coarse)
+        # pdb.set_trace()
+        # print('fine_value:', U_fine)
         # Coarse sweep
 
         Uc=self.coarse.sweep(U_coarse, self.U0_coarse, tau=tau_coarse)
@@ -226,8 +299,9 @@ class minimax(MLSDC):
         # Relax: fine sweep
 
         U_finest=self.fine.sweep(U_fine, self.U0_fine)
+        QU_finest=self.fine.coll.Qcoll @ self.fine.FF @ U_finest
 
-
+        np.savetxt('QU_finest.csv', QU_finest)
         np.savetxt('U_finest.csv', U_finest)
         # pdb.set_trace()
 
@@ -235,11 +309,13 @@ class minimax(MLSDC):
         Residual=self.fine.residual(U_finest, self.U0_fine)
         # save data
         now=str(datetime.now())
+        # pdb.set_trace()
 
-        np.save('data/{}_sol.npy'.format(now[14:19]), U_finest)
+        # np.save('data/{}_sol.npy'.format(now[14:19]), U_finest)
         np.save('data/{}_res.npy'.format(now[14:19]), Residual)
-        print(U_finest)
-        print(Residual)
+        # print(U_finest)
+        # print(Residual)
+        # pdb.set_trace()
 
         return U_finest, Residual
 

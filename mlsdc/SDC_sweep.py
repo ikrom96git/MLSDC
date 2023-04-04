@@ -4,6 +4,9 @@ import pdb
 
 from core.Collocation import CollBase
 from core.Lagrange import LagrangeApproximation
+
+pdb.set_trace()
+
 class _Pars(object):
     def __init__(self, pars):
 

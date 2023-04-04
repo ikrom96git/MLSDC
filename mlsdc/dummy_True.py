@@ -12,3 +12,4 @@ from params import problem_params, collocation_params
 iteration=minimax(problem_params, collocation_params)
 
 iteration.fine_coeff()
+iteration.fineQ_coeff()

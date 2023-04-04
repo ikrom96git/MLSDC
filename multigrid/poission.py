@@ -3,7 +3,10 @@ import matplotlib.pyplot as plt
 import scipy.sparse as sp
 import pdb
 
+
 class multigrid(object):
+    
+
     def __init__(self, x_0, f):
         self.x_0=x_0
         self.f=f
