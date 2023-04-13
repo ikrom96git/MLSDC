@@ -1,6 +1,7 @@
 import numpy as np
 from core.Collocation import CollBase
-from SDC_sweep import get_level_params, Transfer
+from harmonicoscillator import get_collocation_params, Transfer
+
 
 class _Pars(object):
     def __init__(self, pars):
@@ -9,8 +10,35 @@ class _Pars(object):
             setattr(self, k, v)
 
 class mlsdc_solver(object):
-    def __init__(self, vaues):
+    
+    def __init__(self, params, collocation_params):
+    
+        self.params=_Pars(params)
+        self.coll=_Pars(collocation_params)
+        self.fine=get_collocation_params(self.coll.num_nodes[0], self.coll.quad_type)
+        self.coarse=get_collocation_params(self.coll.num_nodes[1], self.coll.quad_type)
+    
+    def matrix(self):
         pass
+    
+    def func(self, x, v, t, eps):
+        return (1/eps)*np.array([0, v[2], -v[1]])+np.array([0, np.sin(t/eps), np.cos(t/eps)])
+    
+    
+    def SDC_solver(self, level=None):
+        if level==None:
+            level=self.fine
+        else:
+            raise ValueError('define level')
+        
+        for ii in range(level.num_nodes):
+            
+        
+        
+        
+        
+    
+    
 
 
 
@@ -109,6 +137,11 @@ if __name__=='__main__':
     params['s']=0.0
     params['eps']=0.00001
     params['u0']= np.array([0, 1, 1, 1, params['eps'], 0])
+    
+    collocation_params=dict()
+    collocation_params['quad_type']='LOBATTO'
+    collocation_params['num_nodes']=[5,5]
+    
 
     solver=Penning_trap(params)
     U=solver.Solver()

@@ -364,8 +364,33 @@ class get_collocation_params(object):
         QI=QI[1:,1:]
         QE=np.copy(QI[:,1:])
         QE=np.hstack((QE, np.zeros(num_nodes).reshape([num_nodes,1])))
+        
+        # trapezoidal rule
+        QT = 1 / 2 * (QI + QE)
 
+        # Qx as in the paper
+        Qx = np.dot(QE, QT) + 1 / 2 * QE * QE
 
+        Sx = np.zeros(np.shape(self.coll.Qmat))
+        ST = np.zeros(np.shape(self.coll.Qmat))
+        S = np.zeros(np.shape(self.coll.Qmat))
+
+        # fill-in node-to-node matrices
+        Sx[0, :] = Qx[0, :]
+        ST[0, :] = QT[0, :]
+        S[0, :] = self.coll.Qmat[0, :]
+        for m in range(self.coll.num_nodes):
+            Sx[m + 1, :] = Qx[m + 1, :] - Qx[m, :]
+            ST[m + 1, :] = QT[m + 1, :] - QT[m, :]
+            S[m + 1, :] = self.coll.Qmat[m + 1, :] - self.coll.Qmat[m, :]
+        # SQ via dot-product, could also be done via QQ
+        
+        SQ = np.dot(S, self.coll.Qmat)
+        self.Sx=self.dt*Sx[1:,1:]
+        self.ST=self.dt*ST[1:,1:]
+        self.S=self.dt*S[1:,1:]
+        self.SQ=self.dt*SQ[1:,1:]
+        
         return [self.dt*Q, self.dt*QI, self.dt*QE,  self.dt*S]
 
 
