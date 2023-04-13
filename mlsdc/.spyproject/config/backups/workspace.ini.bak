@@ -4,7 +4,7 @@ save_data_on_exit = True
 save_history = True
 save_non_project_files = False
 project_type = 'empty-project-type'
-recent_files = ['harmonicoscillator.py', 'dummy_True.py', 'dummy_False.py', 'SDC_sweep.py', 'params.py', 'get_data.py', '../../../../Nextcloud2/TUHH/courses/numode/week1/plots.py']
+recent_files = ['harmonicoscillator.py', 'dummy_True.py', 'dummy_False.py', 'SDC_sweep.py', 'params.py', 'get_data.py', '../../../../Nextcloud2/TUHH/courses/numode/week1/plots.py', 'MLSDC_implementation.py', '../Multiple_scales/multi_scale.py', '../Multiple_scales/_Pars.py', '../../../../Nextcloud2/TUHH/courses/numerical-methods-for-odes-sose2020/SS23/exercises/week_02/src/pp_run.py']
 
 [main]
 version = 0.2.0

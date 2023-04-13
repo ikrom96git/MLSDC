@@ -2,10 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pdb
 
+
 from core.Collocation import CollBase
 from core.Lagrange import LagrangeApproximation
 
-pdb.set_trace()
+
 
 class _Pars(object):
     def __init__(self, pars):
@@ -14,6 +15,7 @@ class _Pars(object):
             setattr(self, k, v)
 
 class get_level_params(object):
+
     def __init__(self, num_nodes, quad_type):
         self.num_nodes=num_nodes
         self.quad_type=quad_type
