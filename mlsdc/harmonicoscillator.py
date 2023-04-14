@@ -334,11 +334,11 @@ class get_collocation_params(object):
             self.dt=dt
         self.num_nodes=num_nodes
         self.quad_type=quad_type
-        [self.Q, self.QI,self.QE, self.S]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
-        self.QQ=self.Q@self.Q
-        self.QT=0.5*(self.QI+self.QE)
-        self.Qx=self.QE@self.QT + 0.5*np.multiply(self.QE, self.QE)
-        self.Ccoll, self.Qcoll, self.Cvv, self.Qvv=self.get_matrix()
+        [self.QI,self.QE]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
+        # self.QQ=self.Q@self.Q
+        # self.QT=0.5*(self.QI+self.QE)
+        # self.Qx=self.QE@self.QT + 0.5*np.multiply(self.QE, self.QE)
+        # self.Ccoll, self.Qcoll, self.Cvv, self.Qvv=self.get_matrix()
 
 
     def get_matrix(self):
@@ -352,8 +352,8 @@ class get_collocation_params(object):
 
     def Qmatrix(self, num_nodes=None, quad_type=None):
         self.coll=CollBase(num_nodes=num_nodes, quad_type=quad_type)
-        Q=self.coll.Qmat[1:,1:]
-        S=self.coll.Smat[1:,1:]
+        # Q=self.coll.Qmat[1:,1:]
+        # S=self.coll.Smat[1:,1:]
         QE = np.zeros(self.coll.Qmat.shape)
         for m in range(self.coll.num_nodes + 1):
             QE[m, 0:m] = self.coll.delta_m[0:m]
@@ -361,10 +361,10 @@ class get_collocation_params(object):
         for m in range(self.coll.num_nodes + 1):
             QI[m, 1 : m + 1] = self.coll.delta_m[0:m]
 
-        QI=QI[1:,1:]
-        QE=np.copy(QI[:,1:])
-        QE=np.hstack((QE, np.zeros(num_nodes).reshape([num_nodes,1])))
-        
+        # QI=QI[1:,1:]
+        # QE=np.copy(QI[:,1:])
+        # QE=np.hstack((QE, np.zeros(num_nodes).reshape([num_nodes,1])))
+
         # trapezoidal rule
         QT = 1 / 2 * (QI + QE)
 
@@ -384,14 +384,14 @@ class get_collocation_params(object):
             ST[m + 1, :] = QT[m + 1, :] - QT[m, :]
             S[m + 1, :] = self.coll.Qmat[m + 1, :] - self.coll.Qmat[m, :]
         # SQ via dot-product, could also be done via QQ
-        
+        print(self.dt)
         SQ = np.dot(S, self.coll.Qmat)
         self.Sx=self.dt*Sx[1:,1:]
         self.ST=self.dt*ST[1:,1:]
         self.S=self.dt*S[1:,1:]
         self.SQ=self.dt*SQ[1:,1:]
-        
-        return [self.dt*Q, self.dt*QI, self.dt*QE,  self.dt*S]
+
+        return [ self.dt*QI, self.dt*QE]
 
 
 class Transfer(object):

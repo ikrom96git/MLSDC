@@ -1,8 +1,8 @@
 import numpy as np
 from core.Collocation import CollBase
 from harmonicoscillator import get_collocation_params, Transfer
-
-
+from scipy.optimize import fsolve
+import pdb
 class _Pars(object):
     def __init__(self, pars):
 
@@ -10,35 +10,59 @@ class _Pars(object):
             setattr(self, k, v)
 
 class mlsdc_solver(object):
-    
+
     def __init__(self, params, collocation_params):
-    
+
         self.params=_Pars(params)
         self.coll=_Pars(collocation_params)
-        self.fine=get_collocation_params(self.coll.num_nodes[0], self.coll.quad_type)
-        self.coarse=get_collocation_params(self.coll.num_nodes[1], self.coll.quad_type)
-    
+        self.fine=get_collocation_params(self.coll.num_nodes[0], self.coll.quad_type, dt=self.params.dt)
+        self.coarse=get_collocation_params(self.coll.num_nodes[1], self.coll.quad_type, dt=self.params.dt)
+
     def matrix(self):
         pass
-    
+
     def func(self, x, v, t, eps):
         return (1/eps)*np.array([0, v[2], -v[1]])+np.array([0, np.sin(t/eps), np.cos(t/eps)])
-    
-    
-    def SDC_solver(self, level=None):
+
+
+    def SDC_solver(self,xold, vold, level=None):
         if level==None:
             level=self.fine
         else:
             raise ValueError('define level')
-        
-        for ii in range(level.num_nodes):
-            
-        
-        
-        
-        
-    
-    
+        Xold = xold*np.ones([level.num_nodes+1, 3])
+        Vold = vold*np.ones([level.num_nodes+1, 3])
+        Xnew=np.copy(Xold)
+        Vnew=np.copy(Vold)
+        for kk in range(10):
+            for ii in range(level.num_nodes):
+                Sx = np.zeros(3)
+                S = np.zeros(3)
+                Sq=np.zeros(3)
+                for jj, nn in enumerate(level.coll.nodes):
+                    nn=self.params.dt*nn
+                    Sx+=level.Sx[ii, jj]*(self.func(Xnew[jj,:], Vnew[jj,:], nn, self.params.eps)-self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps))
+                    S+= level.S[ii,jj] * self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps)
+                    Sq+= level.SQ[ii, jj]*self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps)
+                Xnew[ii+1,:]=Xnew[ii,:]+self.params.dt*level.coll.delta_m[ii]*vold+Sx+Sq
+
+                Vrhs=Vnew[ii, :] + 0.5 * self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii, :], Vnew[ii,:], nn, self.params.eps)-self.func(Xold[ii,:], Vold[ii,:], nn, self.params.eps))+S
+                Vfunc=lambda V: Vrhs + 0.5*self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii+1,:], V, nn, self.params.eps)-self.func(Xold[ii+1,:], Vold[ii+1,:], nn, self.params.eps))-V
+                Vnew[ii+1, :]=fsolve(Vfunc, Vnew[ii,:])
+
+            Xold=np.copy(Xnew)
+            Vold=np.copy(Vnew)
+        return Xnew, Vnew
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -133,16 +157,18 @@ if __name__=='__main__':
 
     params=dict()
     params['t0']=0.0
-    params['tend']=5.0
+    params['tend']=0.5
+    params['dt']=1.0
     params['s']=0.0
-    params['eps']=0.00001
+    params['eps']=0.001
     params['u0']= np.array([0, 1, 1, 1, params['eps'], 0])
-    
-    collocation_params=dict()
-    collocation_params['quad_type']='LOBATTO'
-    collocation_params['num_nodes']=[5,5]
-    
 
+    collocation_params=dict()
+    collocation_params['quad_type']='GAUSS'
+    collocation_params['num_nodes']=[5,5]
+
+    mlsdc=mlsdc_solver(params, collocation_params)
+    X, V=mlsdc.SDC_solver(np.array([0,1,1]), np.array([1, params['eps'], 0]))
     solver=Penning_trap(params)
     U=solver.Solver()
-    U_model=solver.reduction_solver()
+    # U_model=solver.reduction_solver()
