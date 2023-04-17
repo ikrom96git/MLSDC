@@ -4,7 +4,7 @@ save_data_on_exit = True
 save_history = True
 save_non_project_files = False
 project_type = 'empty-project-type'
-recent_files = ['harmonicoscillator.py', 'dummy_True.py', 'dummy_False.py', 'SDC_sweep.py', 'params.py', 'get_data.py', '../../../../Nextcloud2/TUHH/courses/numode/week1/plots.py', 'MLSDC_implementation.py', '../Multiple_scales/multi_scale.py', '../Multiple_scales/_Pars.py']
+recent_files = ['harmonicoscillator.py', 'MLSDC_implementation.py', '../../../testpy/pySDC/pySDC/playgrounds/Boris/penningtrap_playground.py', '../../../testpy/pySDC/pySDC/implementations/sweeper_classes/boris_2nd_order.py']
 
 [main]
 version = 0.2.0

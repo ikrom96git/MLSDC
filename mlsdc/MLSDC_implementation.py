@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from core.Collocation import CollBase
 from harmonicoscillator import get_collocation_params, Transfer
 from scipy.optimize import fsolve
@@ -34,6 +35,7 @@ class mlsdc_solver(object):
         Vold = vold*np.ones([level.num_nodes+1, 3])
         Xnew=np.copy(Xold)
         Vnew=np.copy(Vold)
+
         for kk in range(10):
             for ii in range(level.num_nodes):
                 Sx = np.zeros(3)
@@ -49,9 +51,12 @@ class mlsdc_solver(object):
                 Vrhs=Vnew[ii, :] + 0.5 * self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii, :], Vnew[ii,:], nn, self.params.eps)-self.func(Xold[ii,:], Vold[ii,:], nn, self.params.eps))+S
                 Vfunc=lambda V: Vrhs + 0.5*self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii+1,:], V, nn, self.params.eps)-self.func(Xold[ii+1,:], Vold[ii+1,:], nn, self.params.eps))-V
                 Vnew[ii+1, :]=fsolve(Vfunc, Vnew[ii,:])
-
+                pdb.set_trace()
             Xold=np.copy(Xnew)
             Vold=np.copy(Vnew)
+        pdb.set_trace()
+        plt.plot(level.coll.nodes, Xnew[1:,1])
+        plt.show()
         return Xnew, Vnew
 
 
@@ -153,22 +158,40 @@ class Penning_trap(object):
         GG=AA@u0+CC
         return GG
 
+    def non_uniform_solution(self, t, s, eps, c):
+        cos=lambda a, t, s: np.cos(a*(t-s))
+        sin=lambda a, t, s: np.sin(a*(t-s))
+
+        a_eps=(1+np.sqrt(1-2*c*eps**2))/(2*eps)
+        b_eps=(1-np.sqrt(1-2*c*eps**2))/(2*eps)
+
+        U_eps= np.zeros([6, 6])
+        U_eps[0,:]=np.array([0, 0, 0, 0, cos(np.sqrt(c), t, s), sin(np.sqrt(c), t, s)])
+        U_eps[1,:]=np.array([sin(a_eps, t, s), -sin(a_eps, t, s), sin(b_eps, t, s), -cos(b_eps, t, s), 0, 0])
+        U_eps[2,:]=np.array([cos(a_eps, t, s), sin(a_eps, t, s), cos(b_eps, t, s), sin(b_eps, t, s), 0, 0])
+        U_eps[3,:]=np.array([0, 0, 0, 0, -np.sqrt(c)*sin(np.sqrt(c), t, s), np.sqrt(c)*cos(np.sqrt(c), t, s)])
+        U_eps[4,:]=np.array([a_eps*cos(a_eps, t, s), -a_eps*cos(a_eps, t, s), b_eps*cos(b_eps, t, s), b_eps*sin(b_eps, t, s), 0, 0])
+        U_eps[5,:]=np.array([-a_eps*sin(a_eps, t, s), a_eps*cos(a_eps, t, s), -b_eps*sin(b_eps, t, s), b_eps*cos(b_eps, t, s), 0, 0])
+
+
+
 if __name__=='__main__':
 
     params=dict()
     params['t0']=0.0
-    params['tend']=0.5
+    params['tend']=1
     params['dt']=1.0
     params['s']=0.0
-    params['eps']=0.001
+    params['eps']=1.0#0.01
     params['u0']= np.array([0, 1, 1, 1, params['eps'], 0])
 
     collocation_params=dict()
     collocation_params['quad_type']='GAUSS'
-    collocation_params['num_nodes']=[5,5]
+    collocation_params['num_nodes']=[4,4]
 
-    mlsdc=mlsdc_solver(params, collocation_params)
-    X, V=mlsdc.SDC_solver(np.array([0,1,1]), np.array([1, params['eps'], 0]))
+    # mlsdc=mlsdc_solver(params, collocation_params)
+    # X, V=mlsdc.SDC_solver(np.array([0,1,1]), np.array([1, params['eps'], 0]))
     solver=Penning_trap(params)
     U=solver.Solver()
+    solver.non_uniform_solution(1, 0, 0.1, 1)
     # U_model=solver.reduction_solver()
