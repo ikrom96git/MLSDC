@@ -384,12 +384,12 @@ class get_collocation_params(object):
             ST[m + 1, :] = QT[m + 1, :] - QT[m, :]
             S[m + 1, :] = self.coll.Qmat[m + 1, :] - self.coll.Qmat[m, :]
         # SQ via dot-product, could also be done via QQ
-        print(self.dt)
+
         SQ = np.dot(S, self.coll.Qmat)
-        self.Sx=self.dt*Sx[1:,1:]
+        self.Sx=(self.dt**2)*Sx[1:,1:]
         self.ST=self.dt*ST[1:,1:]
         self.S=self.dt*S[1:,1:]
-        self.SQ=self.dt*SQ[1:,1:]
+        self.SQ=(self.dt**2)*SQ[1:,1:]
 
         return [ self.dt*QI, self.dt*QE]
 

@@ -23,7 +23,7 @@ class mlsdc_solver(object):
         pass
 
     def func(self, x, v, t, eps):
-        return (1/eps)*np.array([0, v[2], -v[1]])+np.array([0, np.sin(t/eps), np.cos(t/eps)])
+        return (1/eps)*np.array([0, v[2], -v[1]])+self.params.c*np.array([-x[0], 0.5*x[1], 0.5*x[2]])
 
 
     def SDC_solver(self,xold, vold, level=None):
@@ -41,22 +41,24 @@ class mlsdc_solver(object):
                 Sx = np.zeros(3)
                 S = np.zeros(3)
                 Sq=np.zeros(3)
+
                 for jj, nn in enumerate(level.coll.nodes):
                     nn=self.params.dt*nn
                     Sx+=level.Sx[ii, jj]*(self.func(Xnew[jj,:], Vnew[jj,:], nn, self.params.eps)-self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps))
                     S+= level.S[ii,jj] * self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps)
                     Sq+= level.SQ[ii, jj]*self.func(Xold[jj,:], Vold[jj,:], nn, self.params.eps)
+
                 Xnew[ii+1,:]=Xnew[ii,:]+self.params.dt*level.coll.delta_m[ii]*vold+Sx+Sq
 
                 Vrhs=Vnew[ii, :] + 0.5 * self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii, :], Vnew[ii,:], nn, self.params.eps)-self.func(Xold[ii,:], Vold[ii,:], nn, self.params.eps))+S
                 Vfunc=lambda V: Vrhs + 0.5*self.params.dt*level.coll.delta_m[ii] * (self.func(Xnew[ii+1,:], V, nn, self.params.eps)-self.func(Xold[ii+1,:], Vold[ii+1,:], nn, self.params.eps))-V
                 Vnew[ii+1, :]=fsolve(Vfunc, Vnew[ii,:])
-                pdb.set_trace()
+            # pdb.set_trace()
             Xold=np.copy(Xnew)
             Vold=np.copy(Vnew)
-        pdb.set_trace()
-        plt.plot(level.coll.nodes, Xnew[1:,1])
-        plt.show()
+            # plt.figure()
+            # plt.plot(level.coll.nodes, Xnew[1:,2])
+            # plt.show()
         return Xnew, Vnew
 
 
@@ -80,7 +82,7 @@ class mlsdc_solver(object):
 class Penning_trap(object):
     def __init__(self, params):
         self.params=_Pars(params)
-        self.t=np.linspace(self.params.t0, self.params.tend, 100)
+        self.t=np.linspace(self.params.t0, self.params.tend, 10000)
 
     def Solver(self):
 
@@ -158,7 +160,7 @@ class Penning_trap(object):
         GG=AA@u0+CC
         return GG
 
-    def non_uniform_solution(self, t, s, eps, c):
+    def non_uniform_U(self, t, s, eps, c):
         cos=lambda a, t, s: np.cos(a*(t-s))
         sin=lambda a, t, s: np.sin(a*(t-s))
 
@@ -167,11 +169,70 @@ class Penning_trap(object):
 
         U_eps= np.zeros([6, 6])
         U_eps[0,:]=np.array([0, 0, 0, 0, cos(np.sqrt(c), t, s), sin(np.sqrt(c), t, s)])
-        U_eps[1,:]=np.array([sin(a_eps, t, s), -sin(a_eps, t, s), sin(b_eps, t, s), -cos(b_eps, t, s), 0, 0])
+        U_eps[1,:]=np.array([sin(a_eps, t, s), -cos(a_eps, t, s), sin(b_eps, t, s), -cos(b_eps, t, s), 0, 0])
         U_eps[2,:]=np.array([cos(a_eps, t, s), sin(a_eps, t, s), cos(b_eps, t, s), sin(b_eps, t, s), 0, 0])
         U_eps[3,:]=np.array([0, 0, 0, 0, -np.sqrt(c)*sin(np.sqrt(c), t, s), np.sqrt(c)*cos(np.sqrt(c), t, s)])
-        U_eps[4,:]=np.array([a_eps*cos(a_eps, t, s), -a_eps*cos(a_eps, t, s), b_eps*cos(b_eps, t, s), b_eps*sin(b_eps, t, s), 0, 0])
+        U_eps[4,:]=np.array([a_eps*cos(a_eps, t, s), a_eps*sin(a_eps, t, s), b_eps*cos(b_eps, t, s), b_eps*sin(b_eps, t, s), 0, 0])
         U_eps[5,:]=np.array([-a_eps*sin(a_eps, t, s), a_eps*cos(a_eps, t, s), -b_eps*sin(b_eps, t, s), b_eps*cos(b_eps, t, s), 0, 0])
+
+        return U_eps
+
+    def non_uniform_E(self, x, c):
+        return c*np.array([-x[0], 0.5*x[1], 0.5*x[2]])
+
+    def non_uniform_coeff(self):
+        U_0=self.non_uniform_U(self.params.t0, self.params.s, self.params.eps, self.params.c)
+        coeff=np.linalg.solve(U_0, self.params.u0)
+
+        return coeff
+
+    def non_uniform_exact(self, t=[None]):
+        if None in t:
+            t=self.t
+        coeff=self.non_uniform_coeff()
+        if self.params.eps>np.sqrt(1/(2*self.params.c)):
+            raise ValueError('Solution does not exist. Need: $\epsilon< \frac{1}{\sqrt(2c))}$')
+        for ii, tt in enumerate(t):
+            if ii==0:
+                U=self.non_uniform_U(tt, self.params.s, self.params.eps, self.params.c)@coeff
+            else:
+                U=np.vstack((U, self.non_uniform_U(tt, self.params.s, self.params.eps, self.params.c)@coeff))
+
+        return U
+
+    def non_uniform_reduced(self, t, s, c):
+        u0=self.params.u0
+        yt0=np.array([u0[0]*np.cos(np.sqrt(c)*(t-s))+(u0[3]/(np.sqrt(c)))*np.sin(np.sqrt(c)*(t-s)), u0[1], u0[2]])
+        ut0=np.array([-u0[0]*np.sqrt(c)*np.sin(np.sqrt(c)*(t-s))+u0[3]*np.cos(np.sqrt(c)*(t-s)), u0[4], u0[5]])
+
+        yt1=np.array([0, 0.5*c*u0[2]*(t-s), -0.5*c*u0[1]*(t-s)])
+        ut1=np.array([0, -0.5*u0[5]*(t-s), 0.5*c*u0[4]*(t-s)])
+
+        return [yt0, ut0, yt1, ut1]
+
+    def GG_non_uniform(self, t, s, eps, c):
+        [yt0, ut0, yt1, ut1]=self.non_uniform_reduced(t, s, c)
+        R0=np.block([yt0, self.R_mat((t-s)/eps)@ut0])
+        RR0=np.block([yt1+self.RR_mat((t-s)/eps)@ut0, self.R_mat((t-s)/eps)@ut1+self.RR_mat((t-s)/eps)@self.non_uniform_E(yt0, c)])
+        return R0+eps*RR0
+
+    def non_uniform_sol(self, t=[None]):
+
+        if None in t:
+            t=self.t
+
+
+        for ii, tt in enumerate(t):
+            if ii==0:
+                U=self.GG_non_uniform(tt, self.params.s, self.params.eps, self.params.c)
+            else:
+                U=np.vstack((U, self.GG_non_uniform(tt, self.params.s, self.params.eps, self.params.c)))
+        return U
+
+
+
+
+
 
 
 
@@ -179,19 +240,23 @@ if __name__=='__main__':
 
     params=dict()
     params['t0']=0.0
-    params['tend']=1
-    params['dt']=1.0
+    params['tend']=0.015625*2
+    params['dt']=0.015625 * 1e-2
+    dt=0.015625 * 1e-2
     params['s']=0.0
-    params['eps']=1.0#0.01
-    params['u0']= np.array([0, 1, 1, 1, params['eps'], 0])
+    params['eps']=0.001
+    params['c']=2.0
+    params['u0']= np.array([1, 1, 1, 1, 1, 1])
 
     collocation_params=dict()
     collocation_params['quad_type']='GAUSS'
-    collocation_params['num_nodes']=[4,4]
+    collocation_params['num_nodes']=[5,5]
 
-    # mlsdc=mlsdc_solver(params, collocation_params)
-    # X, V=mlsdc.SDC_solver(np.array([0,1,1]), np.array([1, params['eps'], 0]))
+    mlsdc=mlsdc_solver(params, collocation_params)
+    X, V=mlsdc.SDC_solver(np.array([1,1,1]), np.array([1, 1, 1]))
     solver=Penning_trap(params)
-    U=solver.Solver()
-    solver.non_uniform_solution(1, 0, 0.1, 1)
-    # U_model=solver.reduction_solver()
+    # u=solver.solver()
+    # solver.non_uniform_solution(1, 0, 0.1, 1)
+    u_non=solver.non_uniform_exact()
+    u_non_reduced=solver.non_uniform_sol()
+    # u_model=solver.reduction_solver()
