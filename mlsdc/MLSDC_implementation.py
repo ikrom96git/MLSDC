@@ -21,10 +21,6 @@ class mlsdc_solver(object):
         self.transfer=Transfer(self.fine.coll.nodes, self.coarse.coll.nodes)
         self.reduced_model=Penning_trap(params)
 
-
-    def matrix(self):
-        pass
-
     def func(self, x, v, eps):
         return (1/eps)*np.array([0, v[2], -v[1]])+self.params.c*np.array([-x[0], 0.5*x[1], 0.5*x[2]])
 
@@ -41,7 +37,7 @@ class mlsdc_solver(object):
         Xnew=np.copy(Xold)
         Vnew=np.copy(Vold)
         M=level.num_nodes
-        print(Xold)
+
         Sq=np.zeros([M, 3])
         S=np.zeros([M, 3])
         for m in range(M):
@@ -350,11 +346,11 @@ if __name__=='__main__':
 
     params=dict()
     params['t0']=0.0
-    params['tend']=0.015625
+    params['tend']=5
     params['dt']=0.015625 * 1e-1
     dt=0.015625
     params['s']=0.0
-    params['eps']=0.001
+    params['eps']=0.1
     params['c']=2.0
     params['u0']= np.array([1, 1, 1, 1, 1, 1])
 
@@ -373,6 +369,12 @@ if __name__=='__main__':
     u_non=solver.non_uniform_exact()
     u_non_reduced=solver.non_uniform_sol()
     plt.figure()
-    plt.plot(solver.t, u_non[:,1])
+    plt.plot(solver.t, u_non[:,1], label='exact')
+    plt.plot(solver.t, u_non_reduced[:,1], label='reduced')
+    plt.xlabel('time')
+    plt.ylabel('Solution')
+    plt.legend()
+    plt.tight_layout()
+
     plt.show()
     # u_model=solver.reduction_solver()
