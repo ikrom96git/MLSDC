@@ -37,7 +37,7 @@ class mlsdc_solver(object):
         Xnew=np.copy(Xold)
         Vnew=np.copy(Vold)
         M=level.num_nodes
-
+        # print(xold)
         Sq=np.zeros([M, 3])
         S=np.zeros([M, 3])
         for m in range(M):
@@ -56,7 +56,7 @@ class mlsdc_solver(object):
 
             Sx=np.copy(Sq)
             for j in range(M+1):
-
+                # pdb.set_trace()
                 f=self.func(Xnew[j,:], Vnew[j,:], self.params.eps)
 
                 Sx+=level.Sx[m+1, j] * f
@@ -164,6 +164,133 @@ class mlsdc_solver(object):
         # pdb.set_trace()
 
         return Xfinest, Vfinest
+
+    def SDC_iter(self, X0, V0, K):
+        x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+        v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+        X0 = X0*np.ones([self.fine.num_nodes+1, 3])
+        V0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+        # X=dict()
+        # V=dict()
+        Rx=dict()
+        Rv=dict()
+
+        for ii in range(K):
+
+            X, V=self.SDC_solver(X0, V0)
+            pdb.set_trace()
+            Rx[ii], Rv[ii]=self.Residual(x0, v0, X, V)
+            X0=X
+            V0=V
+
+        return Rx, Rv
+
+    def SDC_0(self, X0, V0, K):
+        x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+        v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+        X0, V0 = self.reduced_model.non_uniform_order0(t=np.append(self.params.t0,self.params.dt*self.fine.coll.nodes))
+        # pdb.set_trace()
+        # X0=np.transpose(X0)
+        # V0=np.transpose(V0)
+
+
+        X=dict()
+        V=dict()
+        Rx=dict()
+        Rv=dict()
+
+        for ii in range(K):
+            X[ii], V[ii]=self.SDC_solver(X0, V0)
+            Rx[ii], Rv[ii]=self.Residual(x0, v0, X[ii], V[ii])
+            X0=X[ii]
+            V0=V[ii]
+            # pdb.set_trace()
+        return Rx, Rv
+
+
+    def SDC_1(self, X0, V0, K):
+        x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+        v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+        X0, V0 = self.reduced_model.non_uniform_sol(t=np.append(self.params.t0,self.params.dt*self.fine.coll.nodes))
+
+        # X0=np.transpose(X0)
+        # V0=np.transpose(V0)
+
+        X=dict()
+        V=dict()
+        Rx=dict()
+        Rv=dict()
+        for ii in range(K):
+
+            X[ii], V[ii]=self.SDC_solver(X0, V0)
+
+            Rx[ii], Rv[ii]=self.Residual(x0, v0, X[ii], V[ii])
+            X0=X[ii]
+            V0=V[ii]
+        return Rx, Rv
+
+    def Residual(self,X0, V0, X, V):
+        Rx=np.copy(X0)
+        Rv=np.copy(V0)
+        func=np.zeros(np.shape(X0))
+        for jj in range(self.fine.num_nodes+1):
+            func[jj,:]=self.func(X[jj, :], V[jj, :], self.params.eps)
+        for ii in range(3):
+
+            Rx[:, ii]= X0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-X[:,ii]
+            Rv[:, ii]= V0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
+
+        return Rx, Rv
+
+    def max_norm(self, Rx, Rv, K):
+
+        rx_norm=np.zeros([3, K])
+        rv_norm=np.zeros([3, K])
+        for ii in range(3):
+            for jj in range(K):
+                rx_norm[ii, jj]=np.linalg.norm(Rx[jj][:, ii])
+                rv_norm[ii, jj]=np.linalg.norm(Rv[jj][:, ii])
+                # pdb.set_trace()
+        return rx_norm, rv_norm
+
+    def simulation(self):
+        x0, v0=np.split(self.params.u0,2)
+        k=5
+
+        Rx, Rv=self.SDC_iter(x0, v0, k)
+        Rx0, Rv0=self.SDC_0(x0, v0, k)
+        Rx1, Rv1=self.SDC_1(x0, v0, k)
+        rx, rv=self.max_norm(Rx, Rv, k)
+        rx0, rv0=self.max_norm(Rx0, Rv0, k)
+        rx1, rv1=self.max_norm(Rx1, Rv1, k)
+        axis=1
+        yaxis=np.block([[rx[axis, :]], [rx0[axis, :]], [rx1[axis, :]]])
+        xaxis=np.arange(0, k, 1)
+        self.plot_resitual(yaxis, xaxis, k)
+        pdb.set_trace()
+
+
+
+
+
+    def plot_resitual(self, yaxis, xaxis, K):
+        axis=1
+        titles=['SDC', 'SDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
+        markers=['o', 's', 'd']
+        for ii in range(3):
+            plt.semilogy(xaxis, yaxis[ii,:],marker=markers[ii], label=titles[ii])
+
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
 
 
 
@@ -333,7 +460,27 @@ class Penning_trap(object):
                 U=self.GG_non_uniform(tt, self.params.s, self.params.eps, self.params.c)
             else:
                 U=np.vstack((U, self.GG_non_uniform(tt, self.params.s, self.params.eps, self.params.c)))
-        return U
+        X, V=np.split(U, 2, axis=1)
+        return X, V
+
+    def GG_non_uniform_order0(self, t, s, eps, c):
+        [yt0, ut0, yt1, ut1]=self.non_uniform_reduced(t, s, c)
+        R0=np.block([yt0, self.R_mat((t-s)/eps)@ut0])
+        return R0
+
+    def non_uniform_order0(self, t=[None]):
+
+        if None in t:
+            t=self.t
+
+
+        for ii, tt in enumerate(t):
+            if ii==0:
+                U=self.GG_non_uniform_order0(tt, self.params.s, self.params.eps, self.params.c)
+            else:
+                U=np.vstack((U, self.GG_non_uniform_order0(tt, self.params.s, self.params.eps, self.params.c)))
+        X, V=np.split(U, 2, axis=1)
+        return X, V
 
 
 
@@ -347,7 +494,7 @@ if __name__=='__main__':
     params=dict()
     params['t0']=0.0
     params['tend']=5
-    params['dt']=0.015625 * 1e-1
+    params['dt']=0.015625* 0.1
     dt=0.015625
     params['s']=0.0
     params['eps']=0.1
@@ -365,16 +512,18 @@ if __name__=='__main__':
     solver=Penning_trap(params)
     # u=solver.solver()
     # solver.non_uniform_solution(1, 0, 0.1, 1)
-    x, v=mlsdc.MLSDC_sweep(np.array([1,1,1]), np.array([1, 1, 1]))
-    u_non=solver.non_uniform_exact()
-    u_non_reduced=solver.non_uniform_sol()
-    plt.figure()
-    plt.plot(solver.t, u_non[:,1], label='exact')
-    plt.plot(solver.t, u_non_reduced[:,1], label='reduced')
-    plt.xlabel('time')
-    plt.ylabel('Solution')
-    plt.legend()
-    plt.tight_layout()
+    # x, v=mlsdc.MLSDC_sweep(np.array([1,1,1]), np.array([1, 1, 1]))
+    mlsdc.simulation()
+    # u_non=solver.non_uniform_exact()
+    # u_non_reduced=solver.non_uniform_sol()
 
-    plt.show()
+    # plt.figure()
+    # plt.plot(solver.t, u_non[:,1], label='exact')
+    # plt.plot(solver.t, u_non_reduced[:,1], label='reduced')
+    # plt.xlabel('time')
+    # plt.ylabel('Solution')
+    # plt.legend()
+    # plt.tight_layout()
+
+    # plt.show()
     # u_model=solver.reduction_solver()
