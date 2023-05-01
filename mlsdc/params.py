@@ -7,8 +7,8 @@ Created on Thu Mar 16 15:53:17 2023
 """
 
 problem_params=dict()
-problem_params['kappa']=10
-problem_params['mu']=3
+problem_params['kappa']=4
+problem_params['mu']=2
 problem_params['u0']=[4.0, 6]
 problem_params['dt']=0.5
 problem_params['Tend']=2.0

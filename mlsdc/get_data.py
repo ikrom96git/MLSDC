@@ -29,8 +29,8 @@ def new_coarse():
 
 def SDC():
     iteration=MLSDC(problem_params, collocation_params)
-    U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
-    U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
+    U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=6)
+    U_SDC, R_SDC=iteration.SDC_iter(Kiter=6)
     time=iteration.fine.coll.coll.nodes
     mlsdc_pos, mlsdc_vev=np.split(U_MLSDC, 2)
     sdc_pos, sdc_vel=np.split(U_SDC, 2)
@@ -41,14 +41,14 @@ def SDC():
     # plt.title('Position on the single time step')
     # plt.legend()
     # plt.show()
-    return R_MLSDC, R_SDC
+    return R_MLSDC, R_SDC 
 
 if __name__=='__main__':
-    res_pos, res_vel = new_coarse()
-    res_pos=np.flip(res_pos)
-    res_vel=np.flip(res_vel)
+    # res_pos, res_vel = new_coarse()
+    # res_pos=np.flip(res_pos)
+    # res_vel=np.flip(res_vel)
     R_MLSDC, R_SDC=SDC()
-    title=['MLSDC(CH)', 'MLSDC', 'SDC']
-    residual=np.block([ [res_pos], [R_MLSDC[:,0]], [R_SDC[:,0]]])
+    title=['MLSDC', 'SDC']
+    residual=np.block([[R_MLSDC[:,0]], [R_SDC[:,0]]])
     # pdb.set_trace()
-    Plot_residual(np.arange(1, 5), residual, titles=title)
+    Plot_residual(np.arange(1, 7), residual, titles=title)

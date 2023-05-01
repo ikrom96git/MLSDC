@@ -398,20 +398,20 @@ def Plot_residual(x_axis, y_axis, titles=None):
 
 
 
-# if __name__=='__main__':
-#     problem_params=dict()
-#     problem_params['kappa']=1
-#     problem_params['mu']=2
-#     problem_params['u0']=[1.0, 3]
-#     problem_params['dt']=0.5
-#     problem_params['Tend']=2.0
+if __name__=='__main__':
+    problem_params=dict()
+    problem_params['kappa']=1
+    problem_params['mu']=2
+    problem_params['u0']=[1.0, 3]
+    problem_params['dt']=0.5
+    problem_params['Tend']=2.0
 
-#     collocation_params=dict()
-#     collocation_params['quad_type']='LOBATTO'
-#     collocation_params['num_nodes']=[5,3]
-#     iteration=MLSDC(problem_params, collocation_params)
-#     U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
-#     U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
+    collocation_params=dict()
+    collocation_params['quad_type']='LOBATTO'
+    collocation_params['num_nodes']=[5,3]
+    iteration=MLSDC(problem_params, collocation_params)
+    U_MLSDC, R_MLSDC=iteration.MLSDC_iter(Kiter=4)
+    U_SDC, R_SDC=iteration.SDC_iter(Kiter=4)
 
 
 
