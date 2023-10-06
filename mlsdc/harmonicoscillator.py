@@ -84,6 +84,7 @@ class MLSDC(object):
 
         tau_coarse=self.FAS_tau(U_fine, U_coarse)
 
+
         # Coarse sweep
 
         Uc=self.coarse.sweep(U_coarse, U0_coarse, tau=tau_coarse)
@@ -334,8 +335,8 @@ class get_collocation_params(object):
             self.dt=dt
         self.num_nodes=num_nodes
         self.quad_type=quad_type
-        [self.QI,self.QE]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
-        # self.QQ=self.Q@self.Q
+        [self.Q, self.QT,self.Qx]=self.Qmatrix(num_nodes=num_nodes, quad_type=quad_type)
+        self.QQ=self.Q@self.Q
         # self.QT=0.5*(self.QI+self.QE)
         # self.Qx=self.QE@self.QT + 0.5*np.multiply(self.QE, self.QE)
         # self.Ccoll, self.Qcoll, self.Cvv, self.Qvv=self.get_matrix()
@@ -352,7 +353,7 @@ class get_collocation_params(object):
 
     def Qmatrix(self, num_nodes=None, quad_type=None):
         self.coll=CollBase(num_nodes=num_nodes, quad_type=quad_type)
-        # Q=self.coll.Qmat[1:,1:]
+        Q=self.coll.Qmat[1:,1:]
         # S=self.coll.Smat[1:,1:]
         QE = np.zeros(self.coll.Qmat.shape)
         for m in range(self.coll.num_nodes + 1):
@@ -391,7 +392,7 @@ class get_collocation_params(object):
         self.S=self.dt*S
         self.SQ=(self.dt**2)*SQ
 
-        return [ self.dt*QI, self.dt*QE]
+        return [self.dt*Q, self.dt**2*QT[1:,1:], self.dt*Qx[1:,1:]]
 
 
 class Transfer(object):

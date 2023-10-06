@@ -4,6 +4,8 @@ from core.Collocation import CollBase
 from harmonicoscillator import get_collocation_params, Transfer
 from scipy.optimize import fsolve
 import pdb
+fs=12
+plt.rcParams.update({'font.size': fs})
 class _Pars(object):
     def __init__(self, pars):
 
@@ -24,14 +26,17 @@ class mlsdc_solver(object):
     def func(self, x, v, eps):
         return (1/eps)*np.array([0, v[2], -v[1]])+self.params.c*np.array([-x[0], 0.5*x[1], 0.5*x[2]])
 
+    def func_reduced_model(self, u, c):
+        return np.array([u[0], 0, 0, - c*u[3], 0, 0])
 
-    def SDC_solver(self,xold, vold, level=None, tau=[None]):
+    def SDC_solver(self,xold, vold, level=None, taux=[None], tauv=[None]):
         if level==None:
             level=self.fine
 
 
-        if None in tau:
-            tau=np.zeros(np.shape(xold))
+        if None in taux:
+            taux=np.zeros(np.shape(xold))
+            tauv=np.zeros(np.shape(xold))
         Xold=np.copy(xold)
         Vold=np.copy(vold)
         Xnew=np.copy(Xold)
@@ -46,7 +51,6 @@ class mlsdc_solver(object):
                 f = self.func(Xold[j,:], Vold[j,:], self.params.eps)
 
                 Sq[m,:]+=(level.SQ[m+1, j]-level.Sx[m+1, j]) * f
-
                 S[m,:]+=(level.S[m+1, j]) * f
 
 
@@ -61,29 +65,71 @@ class mlsdc_solver(object):
 
                 Sx+=level.Sx[m+1, j] * f
 
-            Xnew[m+1,:]=Xnew[m,:]+self.params.dt*level.coll.delta_m[m]*vold[0,:]+Sx[m,:]+tau[m,:]
-            Vrhs=Vnew[m, :] + 0.5 * self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m, :], Vnew[m,:], self.params.eps)-self.func(Xold[m,:], Vold[m,:], self.params.eps))+S[m,:] + tau[m,:]
+            Xnew[m+1,:]=Xnew[m,:]+self.params.dt*level.coll.delta_m[m]*vold[0,:]+Sx[m,:]+taux[m,:]
+            # pdb.set_trace() xolmamatovna
+            Vrhs=Vnew[m, :] + 0.5 * self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m, :], Vnew[m,:], self.params.eps)-self.func(Xold[m,:], Vold[m,:], self.params.eps))+S[m,:] + tauv[m,:]
             Vfunc=lambda V: Vrhs + 0.5*self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m+1,:], V,self.params.eps)-self.func(Xold[m+1,:], Vold[m+1,:], self.params.eps))-V
             Vnew[m+1, :]=fsolve(Vfunc, Vnew[m,:])
+        # pdb.set_trace()
 
         return Xnew, Vnew
+
+
+    def SDCfwsw(self,Xold, Vold, level=None, taux=[None], tauv=[None]):
+        Uold=np.block([Xold, Vold])
+        if level==None:
+            level=self.fine
+
+
+        if None in taux:
+            taux=np.zeros(np.shape(Uold))
+            tauv=np.zeros(np.shape(Uold))
+
+        U_old=np.copy(Uold)
+        U=np.copy(U_old)
+        # Xold=np.copy(xold)
+        # Vold=np.copy(vold)
+        # Xnew=np.copy(Xold)
+        # Vnew=np.copy(Vold)
+        M=level.num_nodes
+
+        S=np.zeros([M, 6])
+        for m in range(M):
+            for j in range(M+1):
+
+                f = self.func_reduced_model(U[j,:], self.params.c)
+
+                S[m,:]+=(level.S[m+1, j]) * f
+
+        for m in range(M):
+            # pdb.set_trace()
+            U[m+1,:]=U[m,:] + self.params.dt* level.coll.delta_m[m] * (self.func_reduced_model(U[m,:], self.params.c) - self.func_reduced_model(U_old[m,:], self.params.c)) + S[m,:] + np.block([taux[m,:], tauv[m,:]])
+            # Vrhs=Vnew[m, :] + 0.5 * self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m, :], Vnew[m,:], self.params.eps)-self.func(Xold[m,:], Vold[m,:], self.params.eps))+S[m,:] + tau[m,:]
+        Xnew, Vnew=np.split(U, 2, axis=1)
+        return Xnew, Vnew
+
+
+
+
 
     def FAS_tau(self, Xfine, Vfine, Xcoarse, Vcoarse):
         tau=np.zeros(3)
         ffine=np.zeros(np.shape(Xfine))
         fcoarse=np.zeros(np.shape(Xcoarse))
-        tau=np.zeros(np.shape(Xcoarse))
+        taux=np.zeros(np.shape(Xcoarse))
+        tauv=np.copy(taux)
 
         for ii in range(np.max(np.shape(Xfine))):
             ffine[ii,:] = self.func(Xfine[ii,:], Vfine[ii, :], self.params.eps)
+        for ii in range(np.max(np.shape(Xcoarse))):
             fcoarse[ii,:] = self.func(Xcoarse[ii, :], Vcoarse[ii, :], self.params.eps)
 
         for ii in range(3):
-            tau[1:,ii]=(self.transfer.Rcoll @ self.fine.coll.Qmat[1:,1:] @ ffine[1:,ii] - self.coarse.coll.Qmat[1:,1:] @ fcoarse[1:,ii])
 
-        # pdb.set_trace()
-        # tau=(self.Rcoll @ self.fine.coll.Qcoll @ self.fine.FF @ u_fine - self.coarse.coll.Qcoll @ self.coarse.FF @ u_coarse)
-        return tau
+            tauv[1:,ii]=self.params.dt*(self.transfer.Rcoll @ self.fine.coll.Qmat[1:,1:] @ ffine[1:,ii] - self.coarse.coll.Qmat[1:,1:] @ fcoarse[1:,ii])
+            taux[1:,ii]=self.params.dt**2*(self.transfer.Rcoll @ (self.fine.coll.Qmat[1:,1:] @ self.fine.coll.Qmat[1:,1:]) @ ffine[1:,ii] - (self.coarse.coll.Qmat[1:,1:] @ self.coarse.coll.Qmat[1:,1:]) @ fcoarse[1:,ii])
+
+        return taux, tauv
 
     def restriction(self, X, V):
         m=np.min(np.shape(self.transfer.Rcoll))
@@ -96,29 +142,28 @@ class mlsdc_solver(object):
         return Xr, Vr
 
     def prolongation(self, X, V):
-        m=np.min(np.shape(self.transfer.Pcoll))
+        m=np.max(np.shape(self.transfer.Pcoll))
         Xp=np.ones([m+1, 3])*X[0,:]
         Vp=np.ones([m+1, 3])*V[0,:]
         for ii in range(3):
-            Xp[1:,ii]=self.transfer.Pcoll @ X[1:, ii]
-            Vp[1:,ii]=self.transfer.Pcoll @ V[1:, ii]
+            # pdb.set_trace()
+            Xp[1:, ii]=self.transfer.Pcoll @ X[1:, ii].T
+            Vp[1:, ii]=self.transfer.Pcoll @ V[1:, ii].T
 
         return Xp, Vp
 
-    def MLSDC_sweep(self, X0, V0):
-
-        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
-        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+    def MLSDC_sweep(self, X0fine, V0fine):
 
 
         # Fine to coarse without sweep
         X0coarse, V0coarse=self.restriction(X0fine, V0fine)
 
-        tau_coarse=self.FAS_tau(X0fine , V0fine, X0coarse, V0coarse)
+        taux_coarse, tauv_coarse=self.FAS_tau(X0fine , V0fine, X0coarse, V0coarse)
 
+        pdb.set_trace()
         # Coarse sweep
 
-        Xcoarse, Vcoarse=self.SDC_solver(X0coarse, V0coarse,level=self.coarse ,tau=tau_coarse)
+        Xcoarse, Vcoarse=self.SDC_solver(X0coarse, V0coarse,level=self.coarse ,taux=taux_coarse, tauv=tauv_coarse)
 
         # Coarse to fine
         Xp, Vp= self.prolongation(Xcoarse- X0coarse, Vcoarse-V0coarse)
@@ -135,20 +180,20 @@ class mlsdc_solver(object):
 
         return Xfinest, Vfinest
 
-    def MLSDC_sweep_reduced(self, X0, V0):
+    def MLSDC_sweep_reduced(self, X0fine, V0fine):
 
-        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
-        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+        # X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
+        # V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
 
 
         # Fine to coarse without sweep
         X0coarse, V0coarse=self.restriction(X0fine, V0fine)
 
-        tau_coarse=self.FAS_tau(X0fine , V0fine, X0coarse, V0coarse)
+        taux_coarse, tauv_coarse=self.FAS_tau(X0fine , V0fine, X0coarse, V0coarse)
 
         # Coarse sweep
 
-        Xcoarse, Vcoarse=self.SDC_solver(X0coarse, V0coarse,level=self.coarse ,tau=tau_coarse)
+        Xcoarse, Vcoarse=self.SDCfwsw(X0coarse, V0coarse,level=self.coarse ,taux=taux_coarse, tauv=tauv_coarse)
 
         # Coarse to fine
         Xp, Vp= self.prolongation(Xcoarse- X0coarse, Vcoarse-V0coarse)
@@ -179,11 +224,12 @@ class mlsdc_solver(object):
         for ii in range(K):
 
             X, V=self.SDC_solver(X0, V0)
-            pdb.set_trace()
+            # pdb.set_trace()
             Rx[ii], Rv[ii]=self.Residual(x0, v0, X, V)
             X0=X
             V0=V
-
+            # print(X, V)
+            # pdb.set_trace()
         return Rx, Rv
 
     def SDC_0(self, X0, V0, K):
@@ -232,6 +278,45 @@ class mlsdc_solver(object):
             V0=V[ii]
         return Rx, Rv
 
+    def MLSDC_iter(self, X0, V0, K):
+        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
+        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+        X0r=np.copy(X0fine)
+        V0r=np.copy(V0fine)
+        X=dict()
+        V=dict()
+        Rx=dict()
+        Rv=dict()
+        for ii in range(K):
+
+            X[ii], V[ii]=self.MLSDC_sweep(X0fine, V0fine)
+
+            Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
+            X0fine=X[ii]
+            V0fine=V[ii]
+
+        return Rx, Rv
+
+    def MLSDC_reduced_iter(self, X0, V0, K):
+        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
+        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+        X0r=np.copy(X0fine)
+        V0r=np.copy(V0fine)
+        X=dict()
+        V=dict()
+        Rx=dict()
+        Rv=dict()
+        for ii in range(K):
+
+            X[ii], V[ii]=self.MLSDC_sweep_reduced(X0fine, V0fine)
+
+            Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
+            X0fine=X[ii]
+            V0fine=V[ii]
+
+        return Rx, Rv
+
+
     def Residual(self,X0, V0, X, V):
         Rx=np.copy(X0)
         Rv=np.copy(V0)
@@ -240,10 +325,10 @@ class mlsdc_solver(object):
             func[jj,:]=self.func(X[jj, :], V[jj, :], self.params.eps)
         for ii in range(3):
 
-            Rx[:, ii]= X0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-X[:,ii]
-            Rv[:, ii]= V0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
+            Rx[:, ii]= X0[:,ii]+ self.params.dt*self.fine.coll.Qmat@X0[:,ii] + (self.params.dt)**2 * (self.fine.coll.Qmat @ self.fine.coll.Qmat) @ func[:,ii]-X[:,ii]
+            Rv[:, ii]= V0[:,ii]+ self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
 
-        return Rx, Rv
+        return np.abs(Rx), np.abs(Rv)
 
     def max_norm(self, Rx, Rv, K):
 
@@ -259,51 +344,39 @@ class mlsdc_solver(object):
     def simulation(self):
         x0, v0=np.split(self.params.u0,2)
         k=5
-
-        Rx, Rv=self.SDC_iter(x0, v0, k)
-        Rx0, Rv0=self.SDC_0(x0, v0, k)
-        Rx1, Rv1=self.SDC_1(x0, v0, k)
+        Rx, Rv = self.MLSDC_iter(x0, v0, k)
+        Rx0, Rv0 = self.MLSDC_reduced_iter(x0, v0, k)
+        # xr, vr = self.reduced_model.non_uniform_order0(self.fine.coll.nodes)
+        # print(x, v)
+        # Rx, Rv=self.SDC_iter(x0, v0, 2)
+        # pdb.set_trace()
+        # Rx0, Rv0=self.SDC_0(x0, v0, k)
+        # Rx1, Rv1=self.SDC_1(x0, v0, k)
         rx, rv=self.max_norm(Rx, Rv, k)
         rx0, rv0=self.max_norm(Rx0, Rv0, k)
-        rx1, rv1=self.max_norm(Rx1, Rv1, k)
-        axis=1
-        yaxis=np.block([[rx[axis, :]], [rx0[axis, :]], [rx1[axis, :]]])
+        # rx1, rv1=self.max_norm(Rx1, Rv1, k)
+        pdb.set_trace()
+        axis=2
+        yaxis=np.block([[rx[axis, :]], [rx0[axis, :]]])
         xaxis=np.arange(0, k, 1)
         self.plot_resitual(yaxis, xaxis, k)
-        pdb.set_trace()
-
-
-
+        # pdb.set_trace()
 
 
     def plot_resitual(self, yaxis, xaxis, K):
         axis=1
-        titles=['SDC', 'SDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
+        titles=['MLSDC', 'MLSDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
         markers=['o', 's', 'd']
-        for ii in range(3):
+        for ii in range(2):
             plt.semilogy(xaxis, yaxis[ii,:],marker=markers[ii], label=titles[ii])
 
         plt.legend()
         plt.tight_layout()
+        plt.xlabel('K iter')
+        plt.ylabel('Residual')
+        plt.title('Position with max norm')
+        plt.tight_layout()
         plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -494,21 +567,21 @@ if __name__=='__main__':
     params=dict()
     params['t0']=0.0
     params['tend']=5
-    params['dt']=0.015625* 0.1
-    dt=0.015625
+    params['dt']=0.015625 *1e-2
+    dt=0.015625*1e-2
     params['s']=0.0
-    params['eps']=0.1
+    params['eps']=0.0001
     params['c']=2.0
     params['u0']= np.array([1, 1, 1, 1, 1, 1])
 
     collocation_params=dict()
     collocation_params['quad_type']='GAUSS'
-    collocation_params['num_nodes']=[5,5]
+    collocation_params['num_nodes']=[5,3]
 
     mlsdc=mlsdc_solver(params, collocation_params)
     X0=np.ones([5+1,3])
     V0=np.ones([5+1,3])
-    X, V=mlsdc.SDC_solver(X0, V0)
+    # X, V=mlsdc.SDC_solver(X0, V0)
     solver=Penning_trap(params)
     # u=solver.solver()
     # solver.non_uniform_solution(1, 0, 0.1, 1)
