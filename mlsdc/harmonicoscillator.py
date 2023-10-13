@@ -391,6 +391,8 @@ class get_collocation_params(object):
         self.ST=self.dt*ST
         self.S=self.dt*S
         self.SQ=(self.dt**2)*SQ
+        self.QE=self.dt*QE
+        self.QI=self.dt*QI
 
         return [self.dt*Q, self.dt**2*QT[1:,1:], self.dt*Qx[1:,1:]]
 

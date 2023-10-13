@@ -1,6 +1,8 @@
 import numpy as np
 import  matplotlib.pyplot as plt
 from harmonicoscillator import get_collocation_params, Transfer
+import pdb
+
 class _Pars(object):
     def __init__(self, pars):
 
@@ -8,6 +10,7 @@ class _Pars(object):
             setattr(self, k, v)
 
 class penning_trap(object):
+
     def __init__(self, params, collocation_params):
         self.params=_Pars(params)
         self.coll=_Pars(collocation_params)
@@ -16,6 +19,8 @@ class penning_trap(object):
         self.coarse=get_collocation_params(self.coll.num_nodes[1], self.coll.quad_type, dt=self.params.dt)
         self.transfer=Transfer(self.fine.coll.nodes, self.coarse.coll.nodes)
         self.RHS_non_uniform()
+        self.Penning=penningtrap_solution(params)
+        self.Penning.test(self.params.dt*self.fine.coll.nodes)
 
 
     def ndim(self, Q, n):
@@ -30,36 +35,199 @@ class penning_trap(object):
         self.RHSx[2,2]=0.5
         self.RHSv=(1/self.params.eps)*self.RHSv
         self.RHSx=self.params.c*self.RHSx
+        return self.RHSx, self.RHSv
 
+    def reduced_model_RHS0(self, x):
+        return - self.params.c*x
 
-    def SDC_solver(self,x0, v0, x, v, level):
+    def reduced_1order(self):
+        F=np.zeros((12,12))
+        F[0, 3]=1
+        F[3, 0]=-self.params.c
+        F[6,9]=1
+        F[7,2]=0.5*self.params.c
+        F[8,1]=-0.5*self.params.c
+        F[9,6]=-self.params.c
+        F[10,5]=-0.5*self.params.c
+        F[11, 4]=0.5*self.params.c
+        return F
+
+    def SDC_reduced1(self, U0, U, level):
         num_nodes=level.coll.num_nodes
-        X0=x0*np.ones((num_nodes,3))
-        V0=v0*np.ones((num_nodes, 3))
-        X0=(X0.T).reshape(3*num_nodes, 1)
-        V0=(V0.T).reshape(3*num_nodes, 1)
+        Q=self.ndim(level.Q, 12)
+        QE=self.ndim(level.QE[1:,1:],12)
+        QI=self.ndim(level.QI[1:,1:],12)
+        Fx=self.reduced_1order()
+        F=np.kron(Fx, np.eye(num_nodes))
+        I=np.eye(np.shape(Q)[0])
+        u0_red=np.zeros(np.shape(I)[0])
+        u_red=np.copy(u0_red)
+        u0_red[:len(U0)]=U0
 
-        X, V=x*np.ones((num_nodes, 3)), v*np.ones((num_nodes, 3))
-        X=(X.T).reshape(3*num_nodes, 1)
-        V=(V.T).reshape(3*num_nodes, 1)
+        # u_red[:len(U)]=U
+        A=I-QE@F
 
-        level=self.fine
+        b=u0_red+Q@F@u_red
+        Usol=np.linalg.solve(A, b)
+        u=Usol.reshape(12, num_nodes)
+        y0, u0, y1, u1=np.split(u, 4)
+        U_red=np.zeros((6, num_nodes))
+
+        for ii in range(num_nodes):
+            U_red[:,ii]=self.Gt(y0[:,ii], u0[:,ii], y1[:,ii], u1[:,ii],self.params.dt*level.coll.nodes[ii], self.params.s, self.params.eps)
+        U_red=U_red.reshape(6*num_nodes)
+        return U_red
+
+    def update_step(self, x0, v0, U, level):
+        q=self.params.dt*level.coll.weights
+        Q=level.Q
+        qb=q@Q
+        q=np.kron(np.eye(3), q)
+        qb=np.kron(np.eye(3), qb)
+        Fx, Fv=self.RHS_non_uniform()
+        Fvv=np.kron(Fx, np.eye(self.level.num_nodes))
+        Fvx=np.kron(Fv, np.eye(self.level.num_nodes))
+        F=np.block([Fvv, Fvx])
+        V0=v0*np.ones((self.level.num_nodes, 3))
+        V0=(V0.T).reshape(3*self.level.num_nodes, 1)
+        Xup=x0+q@V0+qb@F@U
+        Vup=v0+q@F@U
+        return Xup, Vup
+
+    def update_step_reduced_model(self, u0, U, level):
+        q=self.params.dt*level.coll.weights
+        q=np.kron(np.eye(12), q)
+        Fx=self.reduced_1order()
+        F=np.kron(Fx, np.eye(level.coll.num_nodes))
+        qF=q@F@U
+        return u0+qF
+
+    def Gt(self, yt0, ut0, yt1, ut1, t, s, eps):
+        R0=np.block([yt0, self.Penning.Rtheta((t-s)/eps)@ut0])
+        RR0=np.block([yt1+self.Penning.RRtheta((t-s)/eps)@ut0, self.Penning.Rtheta((t-s)/eps)@ut1+self.Penning.RRtheta((t-s)/eps)@self.Penning.non_uniform_E(yt0, self.params.c)])
+        return R0+eps*RR0
+
+
+    def SDC_solver(self,U0, U, level):
+        num_nodes=level.coll.num_nodes
+
         Q=self.ndim(level.Q, 3)
         QQ=self.ndim(level.QQ,3)
         Qx=self.ndim(level.Qx,3)
         QT=self.ndim(level.QT,3)
-        Fvv=self.ndim(self.RHSv, num_nodes)
-        Fvx=self.ndim(self.RHSx, num_nodes)
-        F=Fvv@V+Fvx@X
-        Xsol=X0+Q@V0+(QQ-Qx)@F
-        Vsol=np.linalg.inv(np.eye(3*num_nodes)-QT@Fvv)@(V0+(Q-QT)@F+QT@Fvx@Xsol)
-        return Xsol, Vsol
+        Fvv=np.kron(self.RHSv, np.eye(num_nodes))
+        Fvx=np.kron(self.RHSx, np.eye(num_nodes))
+
+        O=np.zeros((np.shape(Q)[0], np.shape(Q)[0]))
+        I=np.eye(np.shape(Q)[0])
+        Qmat=np.block([[Qx, O], [O, QT]])
+        Q0=np.block([[I, Q], [O, I]])
+        Dmat=np.block([[QQ-Qx, O], [O, Q-QT]])
+        F=np.block([[Fvx, Fvv], [Fvx, Fvv]])
+        A=np.eye(2*np.shape(Q)[0])-Qmat@F
+        b=Dmat@F@U+Q0@U0
+        Usol=np.linalg.solve(A, b)
+
+        return Usol
+
+    def SDC_0D(self, U0, U, level):
+
+        level=self.fine
+        Q=level.Q
+        QQ=level.QQ
+        Qx=level.Qx
+        QT=level.QT
+        O=np.zeros((np.shape(Q)[0], np.shape(Q)[0]))
+        I=np.eye(np.shape(Q)[0])
+        Qmat=np.block([[Qx, O], [O, QT]])
+        Q0=np.block([[I, Q], [O, I]])
+        Dmat=np.block([[QQ-Qx, O], [O, Q-QT]])
+        Fx=self.reduced_model_RHS0(1)
+        F=np.block([[Fx, O], [Fx, O]])
+        A=np.eye(2*np.shape(Q)[0])-Qmat@F
+        b=Dmat@F@U+Q0@U0
+        Usol=np.linalg.solve(A, b)
+
+        return Usol
 
     def SDC_iter(self, k):
         x0=self.params.u0[0]
         v0=self.params.u0[1]
+        num_nodes=self.fine.coll.num_nodes
+        X0=x0*np.ones((num_nodes,3))
+        V0=v0*np.ones((num_nodes, 3))
+        X0=(X0.T).reshape(3*num_nodes, 1)
+        V0=(V0.T).reshape(3*num_nodes, 1)
+        U0=np.append(X0, V0)
+        U=np.copy(U0)
         for ii in range(k):
-            X, V=self.SDC_solver(x0, v0, x0, v0, self.fine)
+            Usol=self.SDC_solver(U0, U, self.fine)
+            # xrm ,vrm =self.SDC_1D(x0, v0, x0, v0, self.fine)
+            U=Usol
+        print(Usol)
+
+        Usol=U.reshape(6, num_nodes)
+        plt.plot(self.params.dt*self.fine.coll.nodes, Usol[2,:], label='SDC solution')
+        plt.legend()
+
+    def MLSDC_iter(self, K_iter):
+        x0=self.params.u0[0]
+        v0=self.params.u0[1]
+        num_nodes=self.fine.coll.num_nodes
+        X0=x0*np.ones((num_nodes,3))
+        V0=v0*np.ones((num_nodes, 3))
+        X0=(X0.T).reshape(3*num_nodes, 1)
+        V0=(V0.T).reshape(3*num_nodes, 1)
+        U0=np.append(X0, V0)
+        U=np.copy(U0)
+        Rcoll=np.kron(np.eye(6), self.transfer.Rcoll)
+        Pcoll=np.kron(np.eye(6), self.transfer.Pcoll)
+        U0_coarse=Rcoll@U0
+        for ii in range(K_iter):
+
+            U_coarse=Rcoll@U
+            Usol_coarse=self.SDC_solver(U0_coarse, U_coarse, level=self.coarse)
+            U_fine=Pcoll@Usol_coarse
+            Usol=self.SDC_solver(U0, U_fine, level=self.fine)
+            U=Usol
+
+        Usol=U.reshape(6, num_nodes)
+        print(Usol)
+        plt.plot(self.params.dt*self.fine.coll.nodes, Usol[2,:], label='MLSDC solution')
+        plt.legend()
+
+
+    def MLSDC_iter_order1(self, K_iter):
+        x0=self.params.u0[0]
+        v0=self.params.u0[1]
+        num_nodes=self.fine.coll.num_nodes
+        X0=x0*np.ones((num_nodes,3))
+        V0=v0*np.ones((num_nodes, 3))
+        X0=(X0.T).reshape(3*num_nodes, 1)
+        V0=(V0.T).reshape(3*num_nodes, 1)
+        U0=np.append(X0, V0)
+        U=np.copy(U0)
+        Rcoll=np.kron(np.eye(6), self.transfer.Rcoll)
+        Pcoll=np.kron(np.eye(6), self.transfer.Pcoll)
+        U0_coarse=Rcoll@U0
+        for ii in range(K_iter):
+            U_coarse=Rcoll@U
+            Usol_coarse=self.SDC_reduced1(U0_coarse, U_coarse, level=self.coarse)
+
+            U_fine=Pcoll@Usol_coarse
+
+
+            Usol=self.SDC_solver(U0, U_fine, level=self.fine)
+            U=Usol
+
+        Usol=U.reshape(6, num_nodes)
+        print(Usol)
+        plt.plot(self.params.dt*self.fine.coll.nodes, Usol[2,:], label='SDC reduced solution')
+        plt.legend()
+
+
+
+
 
 
 
@@ -78,7 +246,7 @@ class penning_trap(object):
 
 class penningtrap_solution(object):
     def __init__(self, params):
-        self.param=_Pars(params)
+        self.params=_Pars(params)
 
     def Rtheta(self, theta):
         R=np.zeros([3,3])
@@ -176,25 +344,28 @@ class penningtrap_solution(object):
 
     def GG_non_uniform(self,x, v, t, s, eps, c):
         [yt0, ut0, yt1, ut1]=self.non_uniform_reduced(x, v, t, s, c)
-        R0=np.block([yt0, self.R_mat((t-s)/eps)@ut0])
-        RR0=np.block([yt1+self.RR_mat((t-s)/eps)@ut0, self.R_mat((t-s)/eps)@ut1+self.RR_mat((t-s)/eps)@self.non_uniform_E(yt0, c)])
+
+        R0=np.block([yt0, self.Rtheta((t-s)/eps)@ut0])
+        RR0=np.block([yt1+self.RRtheta((t-s)/eps)@ut0, self.Rtheta((t-s)/eps)@ut1+self.RRtheta((t-s)/eps)@self.non_uniform_E(yt0, c)])
+
         return R0+eps*RR0
 
-    def test(self):
-        tn=np.linspace(0, 10, 1000)
+    def test(self, tn):
+        # tn=np.linspace(0,0.02,1000)
         t_len=len(tn)
-        x=np.array([1,1, 1])
-        v=np.array([1,1, 1])
-
-        s=0
-        eps=0.01
+        x=self.params.u0[0]
+        v=self.params.u0[1]
+        c=self.params.c
+        s=self.params.s
+        eps=self.params.eps
         X_ex=np.zeros([3, t_len])
         V_ex=np.zeros([3, t_len])
         X_red=np.zeros([3, t_len])
         V_red=np.zeros([3, t_len])
         for ii in range(t_len):
-            U_ex=self.exactsol_uniform(x, v, tn[ii], s, eps)
-            U_red=self.Gmat_uniform(x, v, tn[ii], s, eps)
+            U_ex=self.non_uniform_exact(x, v, tn[ii], tn[0], s,eps,  c)
+
+            U_red=self.GG_non_uniform(x, v, tn[ii], s, eps, c)
             X_ex[:, ii]=U_ex[:3]
             V_ex[:, ii]=U_ex[3:]
             X_red[:, ii]=U_red[:3]
@@ -202,8 +373,9 @@ class penningtrap_solution(object):
 
 
 
-        plt.plot(tn, V_ex[2,:], label='Exact solution')
-        plt.plot(tn, V_red[2, :], label='reduced problem solution')
+        plt.plot(tn, X_ex[2,:], label='Exact solution')
+        print(X_red)
+        plt.plot(tn, X_red[2, :], label='reduced problem solution')
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -211,17 +383,19 @@ class penningtrap_solution(object):
 if __name__=='__main__':
     params=dict()
     params['t0']=0.0
-    params['tend']=5
-    params['dt']=0.015625 *1e-3
+    params['tend']=1
+    params['dt']=0.008
     dt=0.015625*1e-2
     params['s']=0.0
-    params['eps']=1
-    params['c']=2.0
+    params['eps']=0.01
+    params['c']=1.0
     params['u0']= np.array([[1, 2, 3], [1, 1, 1]])
     collocation_params=dict()
     collocation_params['quad_type']='GAUSS'
     collocation_params['num_nodes']=[5,3]
     pt=penning_trap(params, collocation_params)
-    pt.SDC_iter(3)
+    pt.SDC_iter(4)
+    pt.MLSDC_iter(2)
+    pt.MLSDC_iter_order1(2)
     # reduced_model=penningtrap_solution(params)
     # reduced_model.test()
