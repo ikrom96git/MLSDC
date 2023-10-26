@@ -387,14 +387,14 @@ class get_collocation_params(object):
         # SQ via dot-product, could also be done via QQ
 
         SQ = np.dot(S, self.coll.Qmat)
-        self.Sx=(self.dt**2)*Sx
-        self.ST=self.dt*ST
-        self.S=self.dt*S
-        self.SQ=(self.dt**2)*SQ
+        self.Sx=Sx
+        self.ST=ST
+        self.S=S
+        self.SQ=SQ
         self.QE=self.dt*QE
-        self.QI=self.dt*QI
+        self.QI=QI
 
-        return [self.dt*Q, self.dt**2*QT[1:,1:], self.dt*Qx[1:,1:]]
+        return [Q, QT[1:,1:], Qx[1:,1:]]
 
 
 class Transfer(object):
