@@ -67,6 +67,8 @@ class FAS_correction(penning_trap):
         }
         return U_fine, tau
 
+    def G_0(self, U):
+        pass
     def tau_correction(self, U, level_coarse, level_fine):
         Mc = level_coarse.coll.num_nodes
         Mf = level_fine.coll.num_nodes
@@ -187,9 +189,31 @@ class FAS_correction(penning_trap):
             U_fine, tau_fine=self.interpolation(U_c, level=self.fine)
 
             U_f=self.SDC_method(U_fine, level=self.fine, tau=tau_fine)
+            U=U_f
+        return U_f
+
+    def SDC_reduced_model(self, Kiter):
+        
+        u0 = self.params.u0
+
+        U = {
+            "pos": u0[0] * np.ones((self.fine.coll.num_nodes + 1, 3)),
+            "vel": u0[1] * np.ones((self.fine.coll.num_nodes + 1, 3)),
+        }
+
+        for ii in range(Kiter):
+            U_coarse, tau = self.tau_correction(
+                U, level_coarse=self.coarse, level_fine=self.fine
+            )
+
+
+
+            U_c = self.SDC_method(U_coarse, level=self.coarse, tau=tau)
+
+            U_fine, tau_fine=self.interpolation(U_c, level=self.fine)
+
+            U_f=self.SDC_method(U_fine, level=self.fine, tau=tau_fine)
             print(U_f)
-
-
 
 
 if __name__ == "__main__":
