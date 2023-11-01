@@ -1,27 +1,56 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from MLSDC import penning_trap, _Pars
-
+from copy  import deepcopy
 
 class FAS_correction(penning_trap):
-    def __init__(self, params, collocation_params, type_evalf=None):
+
+    def __init__(self, params, collocation_params):
         super().__init__(params, collocation_params)
-        self.type_evalf = type_evalf
-    def residual(self):
-        pass
+
+
+    def residual(self, U, level):
+        Mf = level.coll.num_nodes
+        Q_fine = self.params.dt * level.coll.Qmat
+        QQ_fine = Q_fine @ Q_fine
+
+        U_0 = {
+            "pos": U["pos"][0] * np.ones((Mf + 1, 3)),
+            "vel": U["vel"][0] * np.ones((Mf + 1, 3)),
+        }
+        V0_fine = U["vel"][0] * np.ones((Mf + 1, 3))
+
+        F = np.zeros((Mf + 1, 3))
+        for m in range(Mf + 1):
+            ff = self.eval_f(U["pos"][m], 0)
+            F[m] = self.build_f(ff, U["vel"][m], self.params.dt)
+        RQF = {"pos": np.zeros((Mf + 1, 3)), "vel": np.zeros((Mf + 1, 3))}
+
+        RQF["vel"][1:] = (Q_fine @ F)[1:]
+        RQF["pos"][1:] = (Q_fine @ V0_fine + QQ_fine @ F)[1:]
+
+        res = dict()
+        res["pos"] =U_0['pos'] + RQF["pos"]-U['pos']
+        res["vel"] =U_0['vel'] + RQF["vel"]-U['vel']
+        res_pos=np.linalg.norm(res['pos'], np.inf, axis=0)
+        res_vel=np.linalg.norm(res['vel'], np.inf, axis=0)
+        return res_pos, res_vel
 
     def build_f(self, f, v, t):
         rhs = f["elec"] + np.cross(v, f["magn"])
         return rhs
 
-    def eval_f(self, pos, t):
+    def eval_f(self, pos, t, type_evalf=False):
         f = dict()
-        if self.type_evalf=='Harmonic_oscillator':
+        if type_evalf:
             Emat = np.diag([-self.params.c, 0, 0])
+            B=0.0
+            print('something')
         else:
             Emat = np.diag([-1, 1 / 2, 1 / 2])
+            B=self.params.omega_B
         f["elec"] = self.params.omega_E**2 * np.dot(Emat, pos)
-        f["magn"] = self.params.omega_B * np.array([1, 0, 0])
+        f["magn"] = B * np.array([1, 0, 0])
 
         return f
 
@@ -67,8 +96,22 @@ class FAS_correction(penning_trap):
         }
         return U_fine, tau
 
-    def G_0(self, U):
-        pass
+    def G_0(self, U, level):
+        num_nodes=level.coll.num_nodes
+        nodes=self.params.dt * level.coll.nodes
+        UG=deepcopy(U)
+        for ii in range(1,num_nodes+1):
+            R=self.Penning.Rtheta((nodes[ii-1]-self.params.s)/self.params.eps)
+            UG['vel'][ii,:]=R@U['vel'][ii,:]
+
+        # for ii in nodes:
+        #     R=self.Penning.GG_non_uniform(self.params.u0[0], self.params.u0[1], ii, self.params.s, self.params.eps, self.params.c)
+        #     print(R)
+        # breakpoint()
+        return UG
+
+
+
     def tau_correction(self, U, level_coarse, level_fine):
         Mc = level_coarse.coll.num_nodes
         Mf = level_fine.coll.num_nodes
@@ -106,7 +149,7 @@ class FAS_correction(penning_trap):
 
         return U_coarse, tau
 
-    def SDC_method(self, U, level, tau):
+    def SDC_method(self, U, level, tau, type_evalf=False):
 
         M = level.coll.num_nodes
         integ = {"pos": np.zeros((M, 3)), "vel": np.zeros((M, 3))}
@@ -114,13 +157,14 @@ class FAS_correction(penning_trap):
 
         F = dict()
         for ii in range(M + 1):
-            F[ii] = self.eval_f(U["pos"][ii], 0)
+            F[ii] = self.eval_f(U["pos"][ii], 0, type_evalf=type_evalf)
 
         for m in range(M):
             for j in range(M + 1):
                 f = self.build_f(
                     F[j], U["vel"][j], self.params.dt * level.coll.nodes[j - 1]
                 )
+
                 integral.pos[m] += self.params.dt * (
                     self.params.dt * (level.SQ[m + 1, j] - level.Sx[m + 1, j]) * f
                 )
@@ -130,7 +174,7 @@ class FAS_correction(penning_trap):
                 )
 
             # tau correction part
-
+            breakpoint()
             if tau['pos'][m].any() is not None:
                 integral.pos[m] += tau["pos"][m]
                 integral.vel[m] += tau["vel"][m]
@@ -155,7 +199,7 @@ class FAS_correction(penning_trap):
 
             U["pos"][m + 1] = tmppos
 
-            F[m + 1] = self.eval_f(U["vel"][m + 1], self.params.dt * level.coll.nodes)
+            F[m + 1] = self.eval_f(U["vel"][m + 1], self.params.dt * level.coll.nodes, type_evalf=type_evalf)
 
             ck = tmpvel
 
@@ -166,17 +210,18 @@ class FAS_correction(penning_trap):
                 F[m + 1],
                 U["vel"][m],
             )
+        breakpoint()
 
         return U
 
-    def SDC_iteration(self, Kiter):
+    def MLSDC_iteration(self, Kiter):
         u0 = self.params.u0
 
         U = {
             "pos": u0[0] * np.ones((self.fine.coll.num_nodes + 1, 3)),
             "vel": u0[1] * np.ones((self.fine.coll.num_nodes + 1, 3)),
         }
-
+        Res={'pos': dict(), 'vel': dict()}
         for ii in range(Kiter):
             U_coarse, tau = self.tau_correction(
                 U, level_coarse=self.coarse, level_fine=self.fine
@@ -187,33 +232,68 @@ class FAS_correction(penning_trap):
             U_c = self.SDC_method(U_coarse, level=self.coarse, tau=tau)
 
             U_fine, tau_fine=self.interpolation(U_c, level=self.fine)
-
+            # breakpoint()
             U_f=self.SDC_method(U_fine, level=self.fine, tau=tau_fine)
-            U=U_f
-        return U_f
+            U=deepcopy(U_f)
+            r_pos, r_vel=self.residual(U_f, level=self.fine)
+            Res['pos'][ii]=r_pos
+            Res['vel'][ii]=r_vel
 
-    def SDC_reduced_model(self, Kiter):
-        
+        return Res
+
+    def MLSDC_reduced_model(self, Kiter):
+
         u0 = self.params.u0
 
         U = {
             "pos": u0[0] * np.ones((self.fine.coll.num_nodes + 1, 3)),
             "vel": u0[1] * np.ones((self.fine.coll.num_nodes + 1, 3)),
         }
-
+        Res={'pos': dict(), 'vel': dict()}
         for ii in range(Kiter):
-            U_coarse, tau = self.tau_correction(
+            Ucoarse, tau = self.tau_correction(
                 U, level_coarse=self.coarse, level_fine=self.fine
             )
+            Uc_0=deepcopy(Ucoarse)
 
 
+            U_c = self.SDC_method(Ucoarse, level=self.coarse, tau=tau, type_evalf=True)
 
-            U_c = self.SDC_method(U_coarse, level=self.coarse, tau=tau)
+            U_c['pos'][:,1:]=deepcopy(Uc_0['pos'][:,1:])
 
-            U_fine, tau_fine=self.interpolation(U_c, level=self.fine)
+            U_G= self.G_0(U_c, level=self.coarse)
+            U_fine, tau_fine=self.interpolation(U_G, level=self.fine)
 
             U_f=self.SDC_method(U_fine, level=self.fine, tau=tau_fine)
-            print(U_f)
+            U=deepcopy(U_f)
+            r_pos, r_vel=self.residual(U_f, level=self.fine)
+            Res['pos'][ii]=r_pos
+            Res['vel'][ii]=r_vel
+
+        return Res
+
+    def plot_residual(self, value, axis, Kiter):
+        res_MLSDC=self.MLSDC_iteration(Kiter)
+        # res_RMLSDC=self.MLSDC_reduced_model(Kiter)
+        print(res_MLSDC)
+
+        K=np.arange(Kiter)
+        res=np.zeros(Kiter)
+        res_R=np.zeros(Kiter)
+        for ii in range(Kiter):
+            res[ii]=res_MLSDC[value][ii][axis]
+            # res_R[ii]=res_RMLSDC[value][ii][axis]
+        plt.figure()
+        plt.semilogy(K, res, label='MLSDC')
+        # plt.semilogy(K, res_R, marker='*', label='Reduced model')
+        plt.xlabel('Iteration')
+        plt.ylabel('Inf norm')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+
+
 
 
 if __name__ == "__main__":
@@ -221,14 +301,16 @@ if __name__ == "__main__":
     params["t0"] = 0.0
     params["tend"] = 1.0
     params["dt"] = 0.0015625
-    params["omega_E"] = 1
-    params["omega_B"] = 0.0 #1 / 0.1
+    params["omega_E"] = 4.9
+    params["omega_B"] = 25.0
     params["s"] = 0.0
     params["eps"] = 0.1
     params["c"] = 2.0
-    params["u0"] = np.array([[1, 1, 1], [1, 1, 1]])
+    params["u0"] = np.array([[10, 0, 0], [100, 0, 100]])
     collocation_params = dict()
     collocation_params["quad_type"] = "GAUSS"
-    collocation_params["num_nodes"] = [5, 3]
-    FAS = FAS_correction(params, collocation_params, type_evalf='Harmonic_oscillator')
-    FAS.SDC_iteration(5)
+    collocation_params["num_nodes"] = [5, 5]
+    FAS = FAS_correction(params, collocation_params)
+    FAS.plot_residual('pos', 2, 5)
+    # FAS.SDC_iteration(4)
+    # FAS.SDC_reduced_model(5)

@@ -608,14 +608,14 @@ class penningtrap_solution(object):
 
     def GG_non_uniform(self,x, v, t, s, eps, c):
         [yt0, ut0, yt1, ut1]=self.non_uniform_reduced(x, v, t, s, c)
-
+        # breakpoint()
         R0=np.block([yt0, self.Rtheta((t-s)/eps)@ut0])
         RR0=np.block([yt1+self.RRtheta((t-s)/eps)@ut0, self.Rtheta((t-s)/eps)@ut1+self.RRtheta((t-s)/eps)@self.non_uniform_E(yt0, c)])
 
-        return R0+eps*RR0
+        return R0
 
     def test(self, tn):
-        tn=np.linspace(0,1,1000)
+        # tn=np.linspace(0,1,1000)
         t_len=len(tn)
         x=self.params.u0[0]
         v=self.params.u0[1]
