@@ -188,6 +188,7 @@ class FAS_correction(penning_trap):
         for m in range(0, M):
             tmppos = np.copy(integral.pos[m])
             tmpvel = np.copy(integral.vel[m])
+            breakpoint()
             for j in range(m + 1):
                 f = self.build_f(
                     F[j], U["vel"][j], self.params.dt * level.coll.nodes[j - 1]
