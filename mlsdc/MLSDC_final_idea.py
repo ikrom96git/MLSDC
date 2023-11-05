@@ -28,10 +28,11 @@ class FAS_correction(penning_trap):
 
         RQF["vel"][1:] = (Q_fine @ F)[1:]
         RQF["pos"][1:] = (Q_fine @ V0_fine + QQ_fine @ F)[1:]
-
+        
         res = dict()
         res["pos"] =U_0['pos'] + RQF["pos"]-U['pos']
         res["vel"] =U_0['vel'] + RQF["vel"]-U['vel']
+        breakpoint()
         res_pos=np.linalg.norm(res['pos'], np.inf, axis=0)
         res_vel=np.linalg.norm(res['vel'], np.inf, axis=0)
         return res_pos, res_vel
@@ -172,9 +173,9 @@ class FAS_correction(penning_trap):
                 integral.vel[m] += (
                     self.params.dt * (level.S[m + 1, j] - level.ST[m + 1, j]) * f
                 )
-
+            
             # tau correction part
-            breakpoint()
+            
             if tau['pos'][m].any() is not None:
                 integral.pos[m] += tau["pos"][m]
                 integral.vel[m] += tau["vel"][m]
@@ -183,12 +184,12 @@ class FAS_correction(penning_trap):
 
                     integral.pos[m] -= tau["pos"][m - 1]
                     integral.pos[m] -= tau["vel"][m - 1]
-
+        
         # do the sweep
         for m in range(0, M):
             tmppos = np.copy(integral.pos[m])
             tmpvel = np.copy(integral.vel[m])
-            breakpoint()
+            
             for j in range(m + 1):
                 f = self.build_f(
                     F[j], U["vel"][j], self.params.dt * level.coll.nodes[j - 1]
@@ -200,7 +201,7 @@ class FAS_correction(penning_trap):
 
             U["pos"][m + 1] = tmppos
 
-            F[m + 1] = self.eval_f(U["vel"][m + 1], self.params.dt * level.coll.nodes, type_evalf=type_evalf)
+            F[m + 1] = self.eval_f(U["pos"][m + 1], self.params.dt * level.coll.nodes[m], type_evalf=type_evalf)
 
             ck = tmpvel
 
@@ -211,7 +212,8 @@ class FAS_correction(penning_trap):
                 F[m + 1],
                 U["vel"][m],
             )
-        breakpoint()
+            
+        
 
         return U
 
@@ -233,13 +235,14 @@ class FAS_correction(penning_trap):
             U_c = self.SDC_method(U_coarse, level=self.coarse, tau=tau)
 
             U_fine, tau_fine=self.interpolation(U_c, level=self.fine)
-            # breakpoint()
+            
             U_f=self.SDC_method(U_fine, level=self.fine, tau=tau_fine)
+            
             U=deepcopy(U_f)
             r_pos, r_vel=self.residual(U_f, level=self.fine)
             Res['pos'][ii]=r_pos
             Res['vel'][ii]=r_vel
-
+            breakpoint()
         return Res
 
     def MLSDC_reduced_model(self, Kiter):
@@ -301,16 +304,16 @@ if __name__ == "__main__":
     params = dict()
     params["t0"] = 0.0
     params["tend"] = 1.0
-    params["dt"] = 0.0015625
+    params["dt"] = 0.015625
     params["omega_E"] = 4.9
     params["omega_B"] = 25.0
     params["s"] = 0.0
     params["eps"] = 0.1
     params["c"] = 2.0
-    params["u0"] = np.array([[10, 0, 0], [100, 0, 100]])
+    params["u0"] = np.array([[10, 0, 0], [100, 1, 100]])
     collocation_params = dict()
     collocation_params["quad_type"] = "GAUSS"
-    collocation_params["num_nodes"] = [5, 5]
+    collocation_params["num_nodes"] = [5, 3]
     FAS = FAS_correction(params, collocation_params)
     FAS.plot_residual('pos', 2, 5)
     # FAS.SDC_iteration(4)
