@@ -29,6 +29,7 @@ class mlsdc_solver(object):
     def func_reduced_model(self, u, c):
         return np.array([u[0], 0, 0, - c*u[3], 0, 0])
 
+
     def SDC_solver(self,xold, vold, level=None, taux=[None], tauv=[None]):
         if level==None:
             level=self.fine
@@ -66,7 +67,7 @@ class mlsdc_solver(object):
                 Sx+=level.Sx[m+1, j] * f
 
             Xnew[m+1,:]=Xnew[m,:]+self.params.dt*level.coll.delta_m[m]*vold[0,:]+Sx[m,:]+taux[m,:]
-            # pdb.set_trace() xolmamatovna
+            # pdb.set_trace()
             Vrhs=Vnew[m, :] + 0.5 * self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m, :], Vnew[m,:], self.params.eps)-self.func(Xold[m,:], Vold[m,:], self.params.eps))+S[m,:] + tauv[m,:]
             Vfunc=lambda V: Vrhs + 0.5*self.params.dt*level.coll.delta_m[m] * (self.func(Xnew[m+1,:], V,self.params.eps)-self.func(Xold[m+1,:], Vold[m+1,:], self.params.eps))-V
             Vnew[m+1, :]=fsolve(Vfunc, Vnew[m,:])
@@ -160,7 +161,7 @@ class mlsdc_solver(object):
 
         taux_coarse, tauv_coarse=self.FAS_tau(X0fine , V0fine, X0coarse, V0coarse)
 
-        pdb.set_trace()
+
         # Coarse sweep
 
         Xcoarse, Vcoarse=self.SDC_solver(X0coarse, V0coarse,level=self.coarse ,taux=taux_coarse, tauv=tauv_coarse)
@@ -209,7 +210,7 @@ class mlsdc_solver(object):
         # pdb.set_trace()
 
         return Xfinest, Vfinest
-
+# =============================================================================
     def SDC_iter(self, X0, V0, K):
         x0 = X0*np.ones([self.fine.num_nodes+1, 3])
         v0 = V0*np.ones([self.fine.num_nodes+1, 3])
@@ -228,8 +229,7 @@ class mlsdc_solver(object):
             Rx[ii], Rv[ii]=self.Residual(x0, v0, X, V)
             X0=X
             V0=V
-            # print(X, V)
-            # pdb.set_trace()
+
         return Rx, Rv
 
     def SDC_0(self, X0, V0, K):
@@ -278,45 +278,6 @@ class mlsdc_solver(object):
             V0=V[ii]
         return Rx, Rv
 
-    def MLSDC_iter(self, X0, V0, K):
-        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
-        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
-        X0r=np.copy(X0fine)
-        V0r=np.copy(V0fine)
-        X=dict()
-        V=dict()
-        Rx=dict()
-        Rv=dict()
-        for ii in range(K):
-
-            X[ii], V[ii]=self.MLSDC_sweep(X0fine, V0fine)
-
-            Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
-            X0fine=X[ii]
-            V0fine=V[ii]
-
-        return Rx, Rv
-
-    def MLSDC_reduced_iter(self, X0, V0, K):
-        X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
-        V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
-        X0r=np.copy(X0fine)
-        V0r=np.copy(V0fine)
-        X=dict()
-        V=dict()
-        Rx=dict()
-        Rv=dict()
-        for ii in range(K):
-
-            X[ii], V[ii]=self.MLSDC_sweep_reduced(X0fine, V0fine)
-
-            Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
-            X0fine=X[ii]
-            V0fine=V[ii]
-
-        return Rx, Rv
-
-
     def Residual(self,X0, V0, X, V):
         Rx=np.copy(X0)
         Rv=np.copy(V0)
@@ -325,10 +286,10 @@ class mlsdc_solver(object):
             func[jj,:]=self.func(X[jj, :], V[jj, :], self.params.eps)
         for ii in range(3):
 
-            Rx[:, ii]= X0[:,ii]+ self.params.dt*self.fine.coll.Qmat@X0[:,ii] + (self.params.dt)**2 * (self.fine.coll.Qmat @ self.fine.coll.Qmat) @ func[:,ii]-X[:,ii]
-            Rv[:, ii]= V0[:,ii]+ self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
+            Rx[:, ii]= X0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-X[:,ii]
+            Rv[:, ii]= V0[:,ii]+self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
 
-        return np.abs(Rx), np.abs(Rv)
+        return Rx, Rv
 
     def max_norm(self, Rx, Rv, K):
 
@@ -344,39 +305,204 @@ class mlsdc_solver(object):
     def simulation(self):
         x0, v0=np.split(self.params.u0,2)
         k=5
-        Rx, Rv = self.MLSDC_iter(x0, v0, k)
-        Rx0, Rv0 = self.MLSDC_reduced_iter(x0, v0, k)
-        # xr, vr = self.reduced_model.non_uniform_order0(self.fine.coll.nodes)
-        # print(x, v)
-        # Rx, Rv=self.SDC_iter(x0, v0, 2)
-        # pdb.set_trace()
-        # Rx0, Rv0=self.SDC_0(x0, v0, k)
-        # Rx1, Rv1=self.SDC_1(x0, v0, k)
+
+        Rx, Rv=self.SDC_iter(x0, v0, k)
+        Rx0, Rv0=self.SDC_0(x0, v0, k)
+        Rx1, Rv1=self.SDC_1(x0, v0, k)
         rx, rv=self.max_norm(Rx, Rv, k)
         rx0, rv0=self.max_norm(Rx0, Rv0, k)
-        # rx1, rv1=self.max_norm(Rx1, Rv1, k)
-        pdb.set_trace()
-        axis=2
-        yaxis=np.block([[rx[axis, :]], [rx0[axis, :]]])
+        rx1, rv1=self.max_norm(Rx1, Rv1, k)
+        axis=1
+        yaxis=np.block([[rx[axis, :]], [rx0[axis, :]], [rx1[axis, :]]])
         xaxis=np.arange(0, k, 1)
         self.plot_resitual(yaxis, xaxis, k)
-        # pdb.set_trace()
+        pdb.set_trace()
+
+
+
 
 
     def plot_resitual(self, yaxis, xaxis, K):
         axis=1
-        titles=['MLSDC', 'MLSDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
+        titles=['SDC', 'SDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
         markers=['o', 's', 'd']
-        for ii in range(2):
+        for ii in range(3):
             plt.semilogy(xaxis, yaxis[ii,:],marker=markers[ii], label=titles[ii])
 
         plt.legend()
         plt.tight_layout()
-        plt.xlabel('K iter')
-        plt.ylabel('Residual')
-        plt.title('Position with max norm')
-        plt.tight_layout()
         plt.show()
+# =============================================================================
+    # def SDC_iter(self, X0, V0, K):
+    #     x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+    #     X0 = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     V0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+    #     # X=dict()
+    #     # V=dict()
+    #     Rx=dict()
+    #     Rv=dict()
+    #     U0={'pos':X0, 'vel': V0}
+    #     for ii in range(K):
+
+    #         X, V=self.SDC_solver(X0, V0)
+    #         # pdb.set_trace()
+
+    #         Rx[ii], Rv[ii]=self.Residual(x0, v0, X, V)
+    #         X0=X
+    #         V0=V
+
+    #         # print(X, V)
+    #         # pdb.set_trace()
+    #     return Rx, Rv
+
+    # def SDC_0(self, X0, V0, K):
+    #     x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+    #     X0, V0 = self.reduced_model.non_uniform_order0(t=np.append(self.params.t0,self.params.dt*self.fine.coll.nodes))
+    #     # pdb.set_trace()
+    #     # X0=np.transpose(X0)
+    #     # V0=np.transpose(V0)
+
+
+    #     X=dict()
+    #     V=dict()
+    #     Rx=dict()
+    #     Rv=dict()
+
+    #     for ii in range(K):
+    #         X[ii], V[ii]=self.SDC_solver(X0, V0)
+    #         Rx[ii], Rv[ii]=self.Residual(x0, v0, X[ii], V[ii])
+    #         X0=X[ii]
+    #         V0=V[ii]
+    #         # pdb.set_trace()
+    #     return Rx, Rv
+
+
+    # def SDC_1(self, X0, V0, K):
+    #     x0 = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     v0 = V0*np.ones([self.fine.num_nodes+1, 3])
+
+    #     X0, V0 = self.reduced_model.non_uniform_sol(t=np.append(self.params.t0,self.params.dt*self.fine.coll.nodes))
+
+    #     # X0=np.transpose(X0)
+    #     # V0=np.transpose(V0)
+
+    #     X=dict()
+    #     V=dict()
+    #     Rx=dict()
+    #     Rv=dict()
+    #     for ii in range(K):
+
+    #         X[ii], V[ii]=self.SDC_solver(X0, V0)
+
+    #         Rx[ii], Rv[ii]=self.Residual(x0, v0, X[ii], V[ii])
+    #         X0=X[ii]
+    #         V0=V[ii]
+    #     return Rx, Rv
+
+    # def MLSDC_iter(self, X0, V0, K):
+    #     X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+    #     X0r=np.copy(X0fine)
+    #     V0r=np.copy(V0fine)
+    #     X=dict()
+    #     V=dict()
+    #     Rx=dict()
+    #     Rv=dict()
+    #     for ii in range(K):
+
+    #         X[ii], V[ii]=self.MLSDC_sweep(X0fine, V0fine)
+
+    #         Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
+    #         X0fine=X[ii]
+    #         V0fine=V[ii]
+
+    #     return Rx, Rv
+
+    # def MLSDC_reduced_iter(self, X0, V0, K):
+    #     X0fine = X0*np.ones([self.fine.num_nodes+1, 3])
+    #     V0fine = V0*np.ones([self.fine.num_nodes+1, 3])
+    #     X0r=np.copy(X0fine)
+    #     V0r=np.copy(V0fine)
+    #     X=dict()
+    #     V=dict()
+    #     Rx=dict()
+    #     Rv=dict()
+    #     for ii in range(K):
+
+    #         X[ii], V[ii]=self.MLSDC_sweep_reduced(X0fine, V0fine)
+
+    #         Rx[ii], Rv[ii]=self.Residual(X0r, V0r, X[ii], V[ii])
+    #         X0fine=X[ii]
+    #         V0fine=V[ii]
+
+    #     return Rx, Rv
+
+
+    # def Residual(self,X0, V0, X, V):
+    #     Rx=np.copy(X0)
+    #     Rv=np.copy(V0)
+    #     func=np.zeros(np.shape(X0))
+    #     for jj in range(self.fine.num_nodes+1):
+    #         func[jj,:]=self.func(X[jj, :], V[jj, :], self.params.eps)
+    #     for ii in range(3):
+
+    #         Rx[:, ii]= X0[:,ii]+ self.params.dt*self.fine.coll.Qmat@X0[:,ii] + (self.params.dt)**2 * (self.fine.coll.Qmat @ self.fine.coll.Qmat) @ func[:,ii]-X[:,ii]
+    #         Rv[:, ii]= V0[:,ii]+ self.params.dt*self.fine.coll.Qmat @ func[:,ii]-V[:,ii]
+
+    #     return np.abs(Rx), np.abs(Rv)
+
+    # def max_norm(self, Rx, Rv, K):
+
+    #     rx_norm=np.zeros([3, K])
+    #     rv_norm=np.zeros([3, K])
+    #     for ii in range(3):
+    #         for jj in range(K):
+    #             rx_norm[ii, jj]=np.linalg.norm(Rx[jj][:, ii])
+    #             rv_norm[ii, jj]=np.linalg.norm(Rv[jj][:, ii])
+    #             # pdb.set_trace()
+    #     return rx_norm, rv_norm
+
+    # def simulation(self):
+    #     x0, v0=np.split(self.params.u0,2)
+    #     k=5
+    #     # Rx, Rv = self.MLSDC_iter(x0, v0, k)
+    #     # Rx0, Rv0 = self.MLSDC_reduced_iter(x0, v0, k)
+    #     # xr, vr = self.reduced_model.non_uniform_order0(self.fine.coll.nodes)
+    #     # print(x, v)
+    #     Rx, Rv=self.SDC_iter(x0, v0, k)
+    #     # pdb.set_trace()
+    #     Rx0, Rv0=self.SDC_0(x0, v0, k)
+    #     Rx1, Rv1=self.SDC_1(x0, v0, k)
+    #     rx, rv=self.max_norm(Rx, Rv, k)
+    #     rx0, rv0=self.max_norm(Rx0, Rv0, k)
+
+    #     rx1, rv1=self.max_norm(Rx1, Rv1, k)
+    #     breakpoint()
+    #     axis=2
+    #     yaxis=np.block([[rx[axis, :]], [rx0[axis, :]]])
+    #     xaxis=np.arange(0, k, 1)
+    #     self.plot_resitual(yaxis, xaxis, k)
+    #     # pdb.set_trace()
+
+
+    # def plot_resitual(self, yaxis, xaxis, K):
+    #     axis=1
+    #     titles=['MLSDC', 'MLSDC $\mathcal{O}(0)$', 'SDC $\mathcal{O}(1)$']
+    #     markers=['o', 's', 'd']
+    #     for ii in range(2):
+    #         plt.semilogy(xaxis, yaxis[ii,:],marker=markers[ii], label=titles[ii])
+
+    #     plt.legend()
+    #     plt.tight_layout()
+    #     plt.xlabel('K iter')
+    #     plt.ylabel('Residual')
+    #     plt.title('Position with max norm')
+    #     plt.tight_layout()
+    #     plt.show()
 
 
 
@@ -508,6 +634,7 @@ class Penning_trap(object):
 
     def non_uniform_reduced(self, t, s, c):
         u0=self.params.u0
+
         yt0=np.array([u0[0]*np.cos(np.sqrt(c)*(t-s))+(u0[3]/(np.sqrt(c)))*np.sin(np.sqrt(c)*(t-s)), u0[1], u0[2]])
         ut0=np.array([-u0[0]*np.sqrt(c)*np.sin(np.sqrt(c)*(t-s))+u0[3]*np.cos(np.sqrt(c)*(t-s)), u0[4], u0[5]])
 
@@ -549,11 +676,63 @@ class Penning_trap(object):
 
         for ii, tt in enumerate(t):
             if ii==0:
+
                 U=self.GG_non_uniform_order0(tt, self.params.s, self.params.eps, self.params.c)
             else:
                 U=np.vstack((U, self.GG_non_uniform_order0(tt, self.params.s, self.params.eps, self.params.c)))
         X, V=np.split(U, 2, axis=1)
         return X, V
+
+    def plot_exact_vs_reduced(self):
+        u_exact=self.non_uniform_exact()
+        x_reduced,v_reduced =self.non_uniform_sol()
+        x_reduced_order0, v_reduced_order0=self.non_uniform_order0()
+        x_exact, v_exact=np.split(u_exact, 2, axis=1)
+        fig, ax=plt.subplots(3,1)
+        ax[0].plot(self.t, x_exact[:,0],color='black', label='exact')
+
+        ax[0].plot(self.t, x_reduced_order0[:,0],color='blue', label='reduced $\mathcal{O}^0$')
+        ax[0].plot(self.t, x_reduced[:,0],color='red', label='reduced $\mathcal{O}^1$')
+        ax[0].set_ylabel('$x_{1}$', fontsize=16)
+        ax[0].legend()
+        ax[0].set_title(r'Solution at the position with $\epsilon=0.01, c=2$')
+        ax[1].plot(self.t, x_exact[:,1],color='black', label='exact')
+
+        ax[1].plot(self.t, x_reduced_order0[:,1],color='blue', label='reduced $\mathcal{O}^0$')
+        ax[1].plot(self.t, x_reduced[:,1],color='red', label='reduced $\mathcal{O}^1$')
+        ax[1].set_ylabel('$x_{2}$', fontsize=16)
+        ax[2].plot(self.t, x_exact[:,2],color='black', label='exact')
+
+        ax[2].plot(self.t, x_reduced_order0[:,2],color='blue', label='reduced order 0')
+        ax[2].plot(self.t, x_reduced[:,2],color='red', label='reduced')
+        ax[2].set_xlabel('time', fontsize=16)
+        ax[2].set_ylabel('$x_{3}$', fontsize=16)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_error(self):
+        u_exact=self.non_uniform_exact()
+        x_reduced,v_reduced =self.non_uniform_sol()
+        x_reduced_order0, v_reduced_order0=self.non_uniform_order0()
+        x_exact, v_exact=np.split(u_exact, 2, axis=1)
+        # fig, ax=plt.subplots(3,1)
+        # breakpoint()
+        # ax[0].semilogy(self.t, np.abs(x_exact[:,0]-x_reduced[:,0]),color='black', label='reduced $\mathcal{O}^1$')
+        # ax[0].semilogy(self.t, np.abs(x_exact[:,0]-x_reduced_order0[:,0]),color='blue', label='reduced $\mathcal{O}^0$')
+        # ax[0].set_ylabel('$x_{1}$', fontsize=16)
+        # ax[0].legend()
+        plt.semilogy(self.t[1:], np.abs(x_exact[:,1]-x_reduced[:,1])[1:],color='black', label='reduced $\mathcal{O}^1$')
+        plt.semilogy(self.t[1:], np.abs(x_exact[:,1]-x_reduced_order0[:,1])[1:],color='blue', label='reduced $\mathcal{O}^0$')
+        plt.ylabel('$x_{2}$', fontsize=16)
+        plt.xlabel('time')
+        plt.title(r'Absolute Error at the position with $\epsilon=0.01, c=2$')
+        plt.legend()
+        # ax[2].semilogy(self.t, np.abs(x_exact[:,2]-x_reduced[:,2]),color='black', label='reduced')
+        # ax[2].semilogy(self.t, np.abs(x_exact[:,2]-x_reduced_order0[:,2]),color='blue', label='reduced $\mathcal{O}^0$')
+        # ax[2].set_xlabel('time', fontsize=16)
+        # ax[2].set_ylabel('$x_{3}$', fontsize=16)
+        plt.tight_layout()
+        plt.show()
 
 
 
@@ -566,14 +745,16 @@ if __name__=='__main__':
 
     params=dict()
     params['t0']=0.0
-    params['tend']=5
-    params['dt']=0.015625 *1e-2
+    params['tend']=1.0
+    params['dt']=0.015625 *0.1
     dt=0.015625*1e-2
     params['s']=0.0
-    params['eps']=0.0001
+    params['eps']=0.1
     params['c']=2.0
     params['u0']= np.array([1, 1, 1, 1, 1, 1])
-
+    model=Penning_trap(params)
+    # model.plot_exact_vs_reduced()
+    # model.plot_error()
     collocation_params=dict()
     collocation_params['quad_type']='GAUSS'
     collocation_params['num_nodes']=[5,3]
